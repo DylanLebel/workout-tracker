@@ -936,7 +936,6 @@ const WorkoutTracker = () => {
                         onChange={(e) => updateSet(exercise.id, setIndex, 'weight', e.target.value)}
                         onFocus={(e) => {
                           e.target.select();
-                          // Prevent the input from losing focus immediately
                           setTimeout(() => e.target.focus(), 0);
                         }}
                         className="w-full bg-gray-700 rounded px-2 py-2 text-center focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -967,7 +966,6 @@ const WorkoutTracker = () => {
                         }}
                         className="w-full bg-gray-700 rounded px-2 py-2 text-center focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                    </div>
                     </div>
                   ))}
                 </div>
