@@ -1,16 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader, LogIn, User } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+
+// --- FIREBASE CONFIGURATION ---
+// IMPORTANT: Replace this with your actual Firebase project configuration.
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
 
 const WorkoutTracker = () => {
   // --- CONSTANTS for Initial State ---
-  const initialExerciseDatabase = {
-    "Flat Barbell Bench Press": { muscle: "Chest, Triceps, Shoulders", difficulty: "Intermediate", equipment: "Barbell", form: "Lie flat on the bench with feet firmly on the floor. Grip the bar slightly wider than shoulder-width. Retract your scapula (pinch shoulder blades together) and arch your lower back slightly. Unrack the bar and lower it to your mid-chest with control. Press the bar back up explosively until your arms are fully extended.", tips: "Drive through your heels to create leg drive. Keep your elbows tucked at a 45-75 degree angle, not flared out. The bar path should be a slight curve, not straight up and down.", progression: "Focus on adding 5lbs to the bar once you can comfortably complete all sets and reps. If you hit a plateau, try incorporating a deload week or accessory exercises like dumbbell press or push-ups.", mistakes: "Bouncing the bar off your chest; Flaring your elbows too wide; Not controlling the eccentric (lowering) phase; Lifting your hips off the bench during the press." },
-    "Incline Dumbbell Press": { muscle: "Upper Chest, Shoulders", difficulty: "Beginner", equipment: "Dumbbells", form: "Set the bench to a 30-45 degree angle. Sit with dumbbells on your knees. Kick the weights up to your shoulders as you lie back. Press the dumbbells up and slightly inwards until they are almost touching. Lower them slowly and with control until you feel a good stretch in your chest.", tips: "Don't let the dumbbells drift too far apart. Focus on squeezing your chest at the top of the movement. Keep your wrists straight and aligned with your forearms.", progression: "Increase reps first. Once you can hit the top of your target rep range for all sets, move up to the next available dumbbell weight. A greater range of motion is often more important than heavier weight here.", mistakes: "Using too much momentum; Not getting a full range of motion; Setting the incline too high (which targets shoulders more); Letting the dumbbells clang together at the top." },
-    "Overhead Press": { muscle: "Shoulders, Triceps", difficulty: "Intermediate", equipment: "Barbell", form: "Stand with the bar racked at shoulder height. Grip the bar just outside your shoulders. Keep your core tight and glutes squeezed. Press the bar straight overhead, pushing your head slightly through the 'window' created by your arms at the top. Lower with control back to the starting position.", tips: "Avoid using your legs to create momentum (unless performing a push press). Squeeze your glutes and brace your core throughout the lift to protect your lower back. Think about pressing the bar 'to the ceiling'.", progression: "This is a slow lift to progress. Micro-plates (1.25lbs) are your best friend. Add small amounts of weight and focus on perfect form. Volume is also a key driver; adding an extra set can be as effective as adding weight.", mistakes: "Arching the lower back excessively; Pressing the bar in front of the body instead of straight overhead; Bending the knees to generate momentum; Not controlling the descent." },
-    "Pull-Ups": { muscle: "Back, Biceps", difficulty: "Intermediate", equipment: "Pull-up bar", form: "Grip the bar with an overhand grip, slightly wider than your shoulders. Start from a dead hang with arms fully extended. Engage your lats by pulling your shoulder blades down and back. Pull yourself up until your chin is over the bar. Lower yourself back down with control.", tips: "Think about pulling your elbows down to your pockets. Avoid swinging. If you can't do a full pull-up, start with negative pull-ups (jumping to the top and lowering slowly) or use resistance bands for assistance.", progression: "Once you can do 8-10 bodyweight pull-ups with good form, start adding weight using a dip belt. You can also progress by increasing the total number of reps across your sets (e.g., aiming for 25 total reps instead of 3x8).", mistakes: "Using momentum (kipping) unless training for CrossFit; Not going through the full range of motion (starting from a dead hang); Pulling with your biceps instead of your back; Going too fast and not controlling the movement." },
-    "Back Squats": { muscle: "Quads, Glutes, Hamstrings", difficulty: "Advanced", equipment: "Barbell", form: "Place the barbell on your upper traps, not your neck. Grip the bar firmly and pull it down into your back. Stand with your feet shoulder-width apart, toes pointed slightly out. Initiate the movement by breaking at the hips and then the knees. Keep your chest up and your back straight. Squat down until your hip crease is below your knee (breaking parallel). Drive back up through your heels.", tips: "Keep your core braced as if you're about to be punched in the stomach. Your knees should track in line with your toes. Film yourself from the side to check your depth and back angle.", progression: "Form is king. Do not add weight until you can consistently hit proper depth with a neutral spine. Progress by adding 5-10lbs at a time. If you stall, focus on variations like pause squats or box squats to build strength in weak points.", mistakes: "Not squatting deep enough (half squats); Letting your chest fall forward; Knees caving inward (valgus collapse); Lifting your heels off the ground." },
-    "Deadlifts": { muscle: "Full Body", difficulty: "Advanced", equipment: "Barbell", form: "Stand with your mid-foot under the barbell. Hinge at your hips and bend your knees to grip the bar, hands just outside your shins. Keep your back straight, chest up, and shoulders back. Drive through your feet to lift the weight, keeping the bar close to your body. As the bar passes your knees, thrust your hips forward to stand up straight. Lower the bar with control by reversing the motion.", tips: "Take the 'slack' out of the bar before you lift by pulling up slightly until you feel the weight. Your hips and shoulders should rise at the same rate. Wear flat-soled shoes to have a stable base.", progression: "This lift is very taxing. Progress slowly and prioritize recovery. Adding 10lbs at a time is feasible for beginners, but this will slow down. Never sacrifice form for more weight. If your form breaks down on the last rep, the weight is too heavy.", mistakes: "Rounding your lower back (the most dangerous mistake); Jerking the bar off the floor; Letting the bar drift away from your body; Hyperextending your back at the top." }
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyDM3i689ESBlBx2pEEy05MZ5c3IY3PQp3w",
+  authDomain: "my-workout-tracker-app-d8d61.firebaseapp.com",
+  projectId: "my-workout-tracker-app-d8d61",
+  storageBucket: "my-workout-tracker-app-d8d61.firebasestorage.app",
+  messagingSenderId: "321079278500",
+  appId: "1:321079278500:web:587525f6cea6829745df31"
+};
 
   const defaultRoutine = {
     1: { name: "Push (Chest, Shoulders, Triceps)", exercises: [ { id: 1, name: "Flat Barbell Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 2, name: "Incline Dumbbell Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 3, name: "Overhead Press", sets: 3, targetReps: "6-8", restTime: 180 }, { id: 4, name: "Lateral Raises", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 5, name: "Tricep Rope Pushdowns", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 6, name: "Overhead Dumbbell Extension", sets: 2, targetReps: "10-12", restTime: 90 } ] },
@@ -23,6 +43,7 @@ const WorkoutTracker = () => {
   };
 
   // --- STATE MANAGEMENT ---
+  const [userId, setUserId] = useState(null);
   const [routine, setRoutine] = useState({});
   const [exerciseDatabase, setExerciseDatabase] = useState({});
   const [currentView, setCurrentView] = useState('routine');
@@ -33,7 +54,70 @@ const WorkoutTracker = () => {
   const [showExerciseInfo, setShowExerciseInfo] = useState(null);
   const [workoutStartTime, setWorkoutStartTime] = useState(null);
   const [isGenerating, setIsGenerating] = useState({});
-  const [isLoading, setIsLoading] = useState(true); // New state for initial loading
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- FIREBASE & DATA HANDLING ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUserId(user.uid);
+        const userDocRef = doc(db, 'users', user.uid);
+        
+        // Set up a real-time listener for user data
+        const unsubSnapshot = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setRoutine(data.routine || defaultRoutine);
+            setExerciseDatabase(data.exerciseDatabase || initialExerciseDatabase);
+            setWorkoutHistory(data.workoutHistory || []);
+            setCurrentDay(data.currentDay || 1);
+          } else {
+            // First time user, create their document with default data
+            const initialData = {
+              routine: defaultRoutine,
+              exerciseDatabase: initialExerciseDatabase,
+              workoutHistory: [],
+              currentDay: 1,
+            };
+            setDoc(userDocRef, initialData);
+            setRoutine(initialData.routine);
+            setExerciseDatabase(initialData.exerciseDatabase);
+            setWorkoutHistory(initialData.workoutHistory);
+            setCurrentDay(initialData.currentDay);
+          }
+          setIsLoading(false);
+        });
+        return () => unsubSnapshot(); // Cleanup listener on unmount
+      } else {
+        signInAnonymously(auth).catch((error) => console.error("Anonymous sign-in failed:", error));
+      }
+    });
+    return () => unsubscribe(); // Cleanup auth listener
+  }, []);
+
+  const saveDataToFirestore = useCallback(async (dataToSave) => {
+    if (!userId) return;
+    const userDocRef = doc(db, 'users', userId);
+    try {
+      await setDoc(userDocRef, dataToSave, { merge: true });
+    } catch (error) {
+      console.error("Error saving data to Firestore:", error);
+    }
+  }, [userId]);
+  
+  // Effect to save data whenever it changes
+  useEffect(() => {
+    if (!isLoading && userId) {
+      const dataToSave = {
+        routine,
+        exerciseDatabase,
+        workoutHistory,
+        currentDay,
+      };
+      saveDataToFirestore(dataToSave);
+    }
+  }, [routine, exerciseDatabase, workoutHistory, currentDay, isLoading, userId, saveDataToFirestore]);
+
 
   // --- LIVE AI FUNCTION ---
   const fetchAiExerciseInfo = async (exerciseName) => {
@@ -109,37 +193,6 @@ const WorkoutTracker = () => {
       }
   };
 
-  // --- LOCALSTORAGE & INITIALIZATION ---
-  useEffect(() => {
-    try {
-        const savedHistory = JSON.parse(localStorage.getItem('workoutHistory') || '[]');
-        const savedDay = parseInt(localStorage.getItem('currentDay') || '1');
-        const savedRoutine = JSON.parse(localStorage.getItem('routine'));
-        const savedDatabase = JSON.parse(localStorage.getItem('exerciseDatabase'));
-
-        setWorkoutHistory(savedHistory);
-        setCurrentDay(savedDay);
-        setExerciseDatabase(savedDatabase || initialExerciseDatabase);
-        setRoutine(savedRoutine || defaultRoutine);
-    } catch (error) {
-        console.error("Error loading data from localStorage", error);
-        localStorage.clear();
-        setRoutine(defaultRoutine);
-        setExerciseDatabase(initialExerciseDatabase);
-    } finally {
-        setIsLoading(false); // Data is loaded, stop showing the loading screen
-    }
-  }, []); // Empty dependency array ensures this runs only once on mount
-
-  useEffect(() => {
-    if (!isLoading) { // Only save to localStorage after initial load is complete
-        localStorage.setItem('workoutHistory', JSON.stringify(workoutHistory));
-        localStorage.setItem('currentDay', currentDay.toString());
-        localStorage.setItem('routine', JSON.stringify(routine));
-        localStorage.setItem('exerciseDatabase', JSON.stringify(exerciseDatabase));
-    }
-  }, [workoutHistory, currentDay, routine, exerciseDatabase, isLoading]);
-
   // --- CORE LOGIC FUNCTIONS ---
   const getProgressionSuggestion = (exerciseName, exerciseHistory) => {
     if (!exerciseHistory || exerciseHistory.length === 0) return { type: "baseline", message: "Start with a comfortable weight to establish your baseline.", suggestion: "Focus on perfect form" };
@@ -191,11 +244,18 @@ const WorkoutTracker = () => {
   const finishWorkout = () => {
     const duration = workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000 / 60) : 0;
     const completedWorkout = { ...workoutData, completedAt: new Date().toISOString(), duration };
-    setWorkoutHistory(prev => [completedWorkout, ...prev]);
-    setActiveWorkout(null);
+    
+    // Create a new history array and update the current day
+    const newHistory = [completedWorkout, ...workoutHistory];
     const dayJustCompleted = workoutData.dayNumber;
     const nextDay = dayJustCompleted >= Object.keys(routine).length ? 1 : dayJustCompleted + 1;
+    
+    // Update state locally for immediate UI response
+    setWorkoutHistory(newHistory);
     setCurrentDay(nextDay);
+
+    // Reset workout state
+    setActiveWorkout(null);
     setWorkoutData({});
     setWorkoutStartTime(null);
     setCurrentView('routine');
@@ -217,7 +277,7 @@ const WorkoutTracker = () => {
   };
 
   const addExerciseToDay = (dayNumber) => {
-    const newId = Math.max(0, ...Object.values(routine).flatMap(day => day.exercises.map(ex => ex.id)), ...workoutHistory.flatMap(w => w.exercises.map(ex => ex.id))) + 1;
+    const newId = Date.now();
     setRoutine(prev => ({ ...prev, [dayNumber]: { ...prev[dayNumber], exercises: [...prev[dayNumber].exercises, { id: newId, name: "New Exercise", sets: 3, targetReps: "8-12", restTime: 120 }] } }));
   };
 
@@ -346,12 +406,15 @@ const WorkoutTracker = () => {
 
   const MainView = () => {
     const stats = getVolumeStats();
+    const [showUserModal, setShowUserModal] = useState(false);
+    
     return (
       <div className="min-h-screen bg-gray-900 text-white font-sans">
         <div className="container mx-auto px-4 py-6 max-w-md">
           <div className="flex items-center justify-between mb-6">
             <div><h1 className="text-2xl font-bold">Smart Training</h1><p className="text-gray-400">Next Up: Day {currentDay} • {routine[currentDay]?.name || 'Rest Day'}</p></div>
             <div className="flex gap-2">
+              <button onClick={() => setShowUserModal(true)} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="User Info"><User size={20} /></button>
               <button onClick={() => setCurrentView('analytics')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="View Analytics"><BarChart3 size={20} /></button>
               <button onClick={() => setCurrentView('history')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="View History"><Calendar size={20} /></button>
               <button onClick={() => setCurrentView('editRoutine')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="Edit Routine"><Edit3 size={20} /></button>
@@ -376,7 +439,35 @@ const WorkoutTracker = () => {
           </div>
         </div>
         {showExerciseInfo && <ExerciseInfoModal exercise={showExerciseInfo} onClose={() => setShowExerciseInfo(null)} />}
+        {showUserModal && <UserModal userId={userId} onClose={() => setShowUserModal(false)} />}
       </div>
+    );
+  };
+
+  const UserModal = ({ userId, onClose }) => {
+    const [copied, setCopied] = useState(false);
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(userId).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg max-w-sm w-full p-6 relative">
+                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
+                <h2 className="text-xl font-bold mb-4">Your User ID</h2>
+                <p className="text-sm text-gray-400 mb-4">This is your unique ID. Save it to access your data on other devices. There is no other way to recover your account.</p>
+                <div className="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+                    <span className="text-sm font-mono truncate">{userId}</span>
+                    <button onClick={copyToClipboard} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm">
+                        {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
   };
 
