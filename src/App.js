@@ -33,6 +33,7 @@ const WorkoutTracker = () => {
   const [showExerciseInfo, setShowExerciseInfo] = useState(null);
   const [workoutStartTime, setWorkoutStartTime] = useState(null);
   const [isGenerating, setIsGenerating] = useState({});
+  const [isLoading, setIsLoading] = useState(true); // New state for initial loading
 
   // --- LIVE AI FUNCTION ---
   const fetchAiExerciseInfo = async (exerciseName) => {
@@ -85,7 +86,6 @@ const WorkoutTracker = () => {
       }
     } catch (error) {
       console.error("Error fetching AI exercise info:", error);
-      // Return a fallback object so the app doesn't crash
       return {
         muscle: "Error", difficulty: "N/A", equipment: "N/A",
         form: "Could not fetch AI data. Please check your connection or API key.",
@@ -126,15 +126,19 @@ const WorkoutTracker = () => {
         localStorage.clear();
         setRoutine(defaultRoutine);
         setExerciseDatabase(initialExerciseDatabase);
+    } finally {
+        setIsLoading(false); // Data is loaded, stop showing the loading screen
     }
-  }, [defaultRoutine, initialExerciseDatabase]);
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   useEffect(() => {
-    localStorage.setItem('workoutHistory', JSON.stringify(workoutHistory));
-    localStorage.setItem('currentDay', currentDay.toString());
-    localStorage.setItem('routine', JSON.stringify(routine));
-    localStorage.setItem('exerciseDatabase', JSON.stringify(exerciseDatabase));
-  }, [workoutHistory, currentDay, routine, exerciseDatabase]);
+    if (!isLoading) { // Only save to localStorage after initial load is complete
+        localStorage.setItem('workoutHistory', JSON.stringify(workoutHistory));
+        localStorage.setItem('currentDay', currentDay.toString());
+        localStorage.setItem('routine', JSON.stringify(routine));
+        localStorage.setItem('exerciseDatabase', JSON.stringify(exerciseDatabase));
+    }
+  }, [workoutHistory, currentDay, routine, exerciseDatabase, isLoading]);
 
   // --- CORE LOGIC FUNCTIONS ---
   const getProgressionSuggestion = (exerciseName, exerciseHistory) => {
@@ -478,6 +482,14 @@ const WorkoutTracker = () => {
   );
 
   // --- VIEW ROUTER ---
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <Loader className="animate-spin" size={48} />
+      </div>
+    );
+  }
+
   switch (currentView) {
     case 'routine':
       return <MainView />;
