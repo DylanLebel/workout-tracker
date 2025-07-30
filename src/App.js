@@ -842,37 +842,39 @@ const WorkoutTracker = () => {
             <X size={24} />
           </button>
           <h2 className="text-xl font-bold mb-4">Your User Info</h2>
-          {SHARED_MODE ? (
-            <div>
-              <p className="text-sm text-yellow-400 mb-4">
-                🌐 <strong>Shared Mode Active</strong>
-              </p>
-              <p className="text-sm text-gray-400 mb-4">
-                All users are currently sharing the same workout data. Everyone sees the same routines, history, and progress. 
-                This is useful for families or gym partners who want to track together.
-              </p>
-              <div className="bg-gray-700 rounded-lg p-3">
-                <p className="text-sm font-mono">Mode: Shared</p>
-                <p className="text-xs text-gray-400 mt-1">To enable individual accounts, set SHARED_MODE to false in the code</p>
+          <div>
+            {SHARED_MODE ? (
+              <div>
+                <p className="text-sm text-yellow-400 mb-4">
+                  🌐 <strong>Shared Mode Active</strong>
+                </p>
+                <p className="text-sm text-gray-400 mb-4">
+                  All users are currently sharing the same workout data. Everyone sees the same routines, history, and progress. 
+                  This is useful for families or gym partners who want to track together.
+                </p>
+                <div className="bg-gray-700 rounded-lg p-3">
+                  <p className="text-sm font-mono">Mode: Shared</p>
+                  <p className="text-xs text-gray-400 mt-1">To enable individual accounts, set SHARED_MODE to false in the code</p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm text-gray-400 mb-4">
-                This is your unique user ID. Save it to access your personal data on other devices. 
-                There is no other way to recover your individual account.
-              </p>
-              <div className="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
-                <span className="text-sm font-mono truncate">{userId}</span>
-                <button 
-                  onClick={copyToClipboard} 
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm"
-                >
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-400 mb-4">
+                  This is your unique user ID. Save it to access your personal data on other devices. 
+                  There is no other way to recover your individual account.
+                </p>
+                <div className="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+                  <span className="text-sm font-mono truncate">{userId}</span>
+                  <button 
+                    onClick={copyToClipboard} 
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm"
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     );
