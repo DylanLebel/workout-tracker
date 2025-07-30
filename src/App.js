@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Trash2, Target, TrendingUp, Clock, Weight, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, AlertCircle, Loader } from 'lucide-react';
+import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader } from 'lucide-react';
 
-//const WorkoutTracker = () => {
-const App = () => {  
-// --- CONSTANTS for Initial State ---
+const WorkoutTracker = () => {
+  // --- CONSTANTS for Initial State ---
   const initialExerciseDatabase = {
     "Flat Barbell Bench Press": { muscle: "Chest, Triceps, Shoulders", difficulty: "Intermediate", equipment: "Barbell", form: "Lie flat on the bench with feet firmly on the floor. Grip the bar slightly wider than shoulder-width. Retract your scapula (pinch shoulder blades together) and arch your lower back slightly. Unrack the bar and lower it to your mid-chest with control. Press the bar back up explosively until your arms are fully extended.", tips: "Drive through your heels to create leg drive. Keep your elbows tucked at a 45-75 degree angle, not flared out. The bar path should be a slight curve, not straight up and down.", progression: "Focus on adding 5lbs to the bar once you can comfortably complete all sets and reps. If you hit a plateau, try incorporating a deload week or accessory exercises like dumbbell press or push-ups.", mistakes: "Bouncing the bar off your chest; Flaring your elbows too wide; Not controlling the eccentric (lowering) phase; Lifting your hips off the bench during the press." },
     "Incline Dumbbell Press": { muscle: "Upper Chest, Shoulders", difficulty: "Beginner", equipment: "Dumbbells", form: "Set the bench to a 30-45 degree angle. Sit with dumbbells on your knees. Kick the weights up to your shoulders as you lie back. Press the dumbbells up and slightly inwards until they are almost touching. Lower them slowly and with control until you feel a good stretch in your chest.", tips: "Don't let the dumbbells drift too far apart. Focus on squeezing your chest at the top of the movement. Keep your wrists straight and aligned with your forearms.", progression: "Increase reps first. Once you can hit the top of your target rep range for all sets, move up to the next available dumbbell weight. A greater range of motion is often more important than heavier weight here.", mistakes: "Using too much momentum; Not getting a full range of motion; Setting the incline too high (which targets shoulders more); Letting the dumbbells clang together at the top." },
@@ -128,7 +127,7 @@ const App = () => {
         setRoutine(defaultRoutine);
         setExerciseDatabase(initialExerciseDatabase);
     }
-  }, []);
+  }, [defaultRoutine, initialExerciseDatabase]);
 
   useEffect(() => {
     localStorage.setItem('workoutHistory', JSON.stringify(workoutHistory));
@@ -495,5 +494,4 @@ const App = () => {
   }
 };
 
-//export default WorkoutTracker;
-export default App;
+export default WorkoutTracker;
