@@ -361,7 +361,7 @@ const WorkoutTracker = () => {
   };
 
   // Fixed updateSet function to prevent keyboard closing
-  const updateSet = (exerciseId, setIndex, field, value) => {
+  const updateSet = useCallback((exerciseId, setIndex, field, value) => {
     setWorkoutData(prev => ({
       ...prev,
       exercises: prev.exercises.map(exercise =>
@@ -375,7 +375,7 @@ const WorkoutTracker = () => {
           : exercise
       )
     }));
-  };
+  }, []);
 
   const finishWorkout = async () => {
     console.log("Starting finishWorkout...");
@@ -417,9 +417,10 @@ const WorkoutTracker = () => {
     setCurrentView('routine');
   };
 
-  const deleteWorkout = (workoutId) => {
+  const deleteWorkout = async (workoutId) => {
     const newHistory = workoutHistory.filter(workout => workout.id !== workoutId);
-    saveDataToDatabase({ workoutHistory: newHistory });
+    console.log(`Deleting workout ${workoutId}, new history length: ${newHistory.length}`);
+    await saveDataToDatabase({ workoutHistory: newHistory });
   };
 
   const updateRoutine = (newRoutine) => {
@@ -925,35 +926,46 @@ const WorkoutTracker = () => {
                     <div key={setIndex} className="grid grid-cols-4 gap-2 items-center">
                       <span className="text-center font-bold text-gray-400">{setIndex + 1}</span>
                       <input 
-                        type="number" 
+                        key={`${exercise.id}-${setIndex}-weight`}
+                        type="tel"
                         inputMode="numeric"
-                        pattern="[0-9]*"
                         placeholder={history[0]?.sets[setIndex]?.weight || "0"} 
                         value={set.weight} 
                         onChange={(e) => updateSet(exercise.id, setIndex, 'weight', e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full bg-gray-700 rounded px-2 py-2 text-center"
+                        onFocus={(e) => {
+                          e.target.select();
+                          // Prevent the input from losing focus immediately
+                          setTimeout(() => e.target.focus(), 0);
+                        }}
+                        className="w-full bg-gray-700 rounded px-2 py-2 text-center focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <input 
-                        type="number" 
+                        key={`${exercise.id}-${setIndex}-reps`}
+                        type="tel"
                         inputMode="numeric"
-                        pattern="[0-9]*"
                         placeholder={history[0]?.sets[setIndex]?.reps || "0"} 
                         value={set.reps} 
                         onChange={(e) => updateSet(exercise.id, setIndex, 'reps', e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full bg-gray-700 rounded px-2 py-2 text-center"
+                        onFocus={(e) => {
+                          e.target.select();
+                          setTimeout(() => e.target.focus(), 0);
+                        }}
+                        className="w-full bg-gray-700 rounded px-2 py-2 text-center focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <input 
-                        type="number" 
+                        key={`${exercise.id}-${setIndex}-rpe`}
+                        type="tel"
                         inputMode="numeric"
-                        pattern="[0-9]*"
                         placeholder={history[0]?.sets[setIndex]?.rpe || "8"} 
                         value={set.rpe} 
                         onChange={(e) => updateSet(exercise.id, setIndex, 'rpe', e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full bg-gray-700 rounded px-2 py-2 text-center"
+                        onFocus={(e) => {
+                          e.target.select();
+                          setTimeout(() => e.target.focus(), 0);
+                        }}
+                        className="w-full bg-gray-700 rounded px-2 py-2 text-center focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                    </div>
                     </div>
                   ))}
                 </div>
