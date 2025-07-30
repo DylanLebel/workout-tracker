@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader, User } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -41,6 +41,11 @@ const defaultRoutine = {
 };
 
 const WorkoutTracker = () => {
+  // --- SHARED MODE TOGGLE ---
+  // Set to true for shared data across all devices, false for individual user data
+  const SHARED_MODE = true; // Change this to false to enable individual user accounts
+  const SHARED_USER_ID = 'shared_workout_data'; // Everyone uses this ID when SHARED_MODE is true
+
   // --- STATE MANAGEMENT ---
   const [userId, setUserId] = useState(null);
   const [routine, setRoutine] = useState({});
@@ -63,57 +68,103 @@ const WorkoutTracker = () => {
       return;
     }
     
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("Auth state changed:", { user: !!user, uid: user?.uid });
+    if (SHARED_MODE) {
+      // SHARED MODE: Everyone uses the same data
+      console.log("Running in SHARED MODE - all users share the same data");
+      setUserId(SHARED_USER_ID);
       
-      if (user) {
-        setUserId(user.uid);
-        const userRef = ref(database, `users/${user.uid}`);
+      const sharedRef = ref(database, `users/${SHARED_USER_ID}`);
+      
+      // Listen for data changes
+      const unsubData = onValue(sharedRef, (snapshot) => {
+        console.log("Shared data updated:", { exists: snapshot.exists() });
         
-        // Listen for data changes
-        const unsubData = onValue(userRef, (snapshot) => {
-          console.log("Realtime Database updated:", { exists: snapshot.exists() });
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          console.log("Shared database data:", {
+            routineExists: !!data.routine,
+            exerciseDbExists: !!data.exerciseDatabase,
+            historyLength: data.workoutHistory?.length || 0,
+            currentDay: data.currentDay
+          });
           
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            console.log("Database data:", {
-              routineExists: !!data.routine,
-              exerciseDbExists: !!data.exerciseDatabase,
-              historyLength: data.workoutHistory?.length || 0,
-              currentDay: data.currentDay
-            });
-            
-            setRoutine(data.routine || defaultRoutine);
-            setExerciseDatabase(data.exerciseDatabase || initialExerciseDatabase);
-            setWorkoutHistory(data.workoutHistory || []);
-            setCurrentDay(data.currentDay || 1);
-          } else {
-            console.log("No data exists, creating initial data...");
-            const initialData = {
-              routine: defaultRoutine,
-              exerciseDatabase: initialExerciseDatabase,
-              workoutHistory: [],
-              currentDay: 1,
-            };
-            set(userRef, initialData);
-          }
-          setIsLoading(false);
-        }, (error) => {
-          console.error("Realtime Database error:", error);
-          setIsLoading(false);
-        });
+          setRoutine(data.routine || defaultRoutine);
+          setExerciseDatabase(data.exerciseDatabase || initialExerciseDatabase);
+          setWorkoutHistory(data.workoutHistory || []);
+          setCurrentDay(data.currentDay || 1);
+        } else {
+          console.log("No shared data exists, creating initial shared data...");
+          const initialData = {
+            routine: defaultRoutine,
+            exerciseDatabase: initialExerciseDatabase,
+            workoutHistory: [],
+            currentDay: 1,
+          };
+          set(sharedRef, initialData);
+        }
+        setIsLoading(false);
+      }, (error) => {
+        console.error("Shared data error:", error);
+        setIsLoading(false);
+      });
+      
+      return () => unsubData();
+    } else {
+      // INDIVIDUAL MODE: Each device gets its own user ID and data
+      console.log("Running in INDIVIDUAL MODE - each user has separate data");
+      
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        console.log("Auth state changed:", { user: !!user, uid: user?.uid });
         
-        return () => unsubData();
-      } else {
-        console.log("No user, signing in anonymously...");
-        signInAnonymously(auth).catch((error) => {
-          console.error("Anonymous sign-in failed:", error);
-          setIsLoading(false);
-        });
-      }
-    });
-    
-    return () => unsubscribe();
+        if (user) {
+          setUserId(user.uid);
+          const userRef = ref(database, `users/${user.uid}`);
+          
+          // Listen for data changes
+          const unsubData = onValue(userRef, (snapshot) => {
+            console.log("Individual user data updated:", { exists: snapshot.exists() });
+            
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              console.log("Individual database data:", {
+                routineExists: !!data.routine,
+                exerciseDbExists: !!data.exerciseDatabase,
+                historyLength: data.workoutHistory?.length || 0,
+                currentDay: data.currentDay
+              });
+              
+              setRoutine(data.routine || defaultRoutine);
+              setExerciseDatabase(data.exerciseDatabase || initialExerciseDatabase);
+              setWorkoutHistory(data.workoutHistory || []);
+              setCurrentDay(data.currentDay || 1);
+            } else {
+              console.log("No individual data exists, creating initial data...");
+              const initialData = {
+                routine: defaultRoutine,
+                exerciseDatabase: initialExerciseDatabase,
+                workoutHistory: [],
+                currentDay: 1,
+              };
+              set(userRef, initialData);
+            }
+            setIsLoading(false);
+          }, (error) => {
+            console.error("Individual user data error:", error);
+            setIsLoading(false);
+          });
+          
+          return () => unsubData();
+        } else {
+          console.log("No user, signing in anonymously...");
+          signInAnonymously(auth).catch((error) => {
+            console.error("Anonymous sign-in failed:", error);
+            setIsLoading(false);
+          });
+        }
+      });
+      
+      return () => unsubscribe();
+    }
   }, []);
 
   const saveDataToDatabase = useCallback(async (dataToSave) => {
@@ -492,7 +543,7 @@ const WorkoutTracker = () => {
                     return (
                       <div key={idx} className="flex justify-between text-sm bg-gray-700 p-2 rounded">
                         <div>
-                          <span className="font-semibold">{bestSet.weight || 0}lbs � {bestSet.reps || 0} reps</span>
+                          <span className="font-semibold">{bestSet.weight || 0}lbs × {bestSet.reps || 0} reps</span>
                           <span className="text-gray-400 ml-2">(RPE {bestSet.rpe || 'N/A'})</span>
                         </div>
                         <span className="text-gray-500">{formatDate(hist.completedAt)}</span>
@@ -668,7 +719,10 @@ const WorkoutTracker = () => {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold">Smart Training</h1>
-              <p className="text-gray-400">Next Up: Day {currentDay} � {routine[currentDay]?.name || 'Rest Day'}</p>
+              <p className="text-gray-400">Next Up: Day {currentDay} • {routine[currentDay]?.name || 'Rest Day'}</p>
+              {SHARED_MODE && (
+                <p className="text-xs text-yellow-400 mt-1">🌐 Shared Mode: All users see the same data</p>
+              )}
             </div>
             <div className="flex gap-2">
               <button 
@@ -786,20 +840,38 @@ const WorkoutTracker = () => {
           >
             <X size={24} />
           </button>
-          <h2 className="text-xl font-bold mb-4">Your User ID</h2>
-          <p className="text-sm text-gray-400 mb-4">
-            This is your unique ID. Save it to access your data on other devices. 
-            There is no other way to recover your account.
-          </p>
-          <div className="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
-            <span className="text-sm font-mono truncate">{userId}</span>
-            <button 
-              onClick={copyToClipboard} 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm"
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
+          <h2 className="text-xl font-bold mb-4">Your User Info</h2>
+          {SHARED_MODE ? (
+            <div>
+              <p className="text-sm text-yellow-400 mb-4">
+                🌐 <strong>Shared Mode Active</strong>
+              </p>
+              <p className="text-sm text-gray-400 mb-4">
+                All users are currently sharing the same workout data. Everyone sees the same routines, history, and progress. 
+                This is useful for families or gym partners who want to track together.
+              </p>
+              <div className="bg-gray-700 rounded-lg p-3">
+                <p className="text-sm font-mono">Mode: Shared</p>
+                <p className="text-xs text-gray-400 mt-1">To enable individual accounts, set SHARED_MODE to false in the code</p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-gray-400 mb-4">
+                This is your unique user ID. Save it to access your personal data on other devices. 
+                There is no other way to recover your individual account.
+              </p>
+              <div className="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+                <span className="text-sm font-mono truncate">{userId}</span>
+                <button 
+                  onClick={copyToClipboard} 
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm"
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
