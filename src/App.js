@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader, LogIn, User } from 'lucide-react';
+import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader, User } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 // --- FIREBASE CONFIGURATION ---
-// IMPORTANT: Replace this with your actual Firebase project configuration.
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDM3i689ESBlBx2pEEy05MZ5c3IY3PQp3w",
+  authDomain: "my-workout-tracker-app-d8d61.firebaseapp.com",
+  projectId: "my-workout-tracker-app-d8d61",
+  storageBucket: "my-workout-tracker-app-d8d61.appspot.com",
+  messagingSenderId: "321079278500",
+  appId: "1:321079278500:web:587525f6cea6829745df31"
 };
 
 // Initialize Firebase
@@ -20,28 +19,27 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-
-const WorkoutTracker = () => {
-  // --- CONSTANTS for Initial State ---
-const firebaseConfig = {
-  apiKey: "AIzaSyDM3i689ESBlBx2pEEy05MZ5c3IY3PQp3w",
-  authDomain: "my-workout-tracker-app-d8d61.firebaseapp.com",
-  projectId: "my-workout-tracker-app-d8d61",
-  storageBucket: "my-workout-tracker-app-d8d61.firebasestorage.app",
-  messagingSenderId: "321079278500",
-  appId: "1:321079278500:web:587525f6cea6829745df31"
+// --- CONSTANTS for Initial State (Moved outside component) ---
+const initialExerciseDatabase = {
+  "Flat Barbell Bench Press": { muscle: "Chest, Triceps, Shoulders", difficulty: "Intermediate", equipment: "Barbell", form: "Lie flat on the bench with feet firmly on the floor. Grip the bar slightly wider than shoulder-width. Retract your scapula (pinch shoulder blades together) and arch your lower back slightly. Unrack the bar and lower it to your mid-chest with control. Press the bar back up explosively until your arms are fully extended.", tips: "Drive through your heels to create leg drive. Keep your elbows tucked at a 45-75 degree angle, not flared out. The bar path should be a slight curve, not straight up and down.", progression: "Focus on adding 5lbs to the bar once you can comfortably complete all sets and reps. If you hit a plateau, try incorporating a deload week or accessory exercises like dumbbell press or push-ups.", mistakes: "Bouncing the bar off your chest; Flaring your elbows too wide; Not controlling the eccentric (lowering) phase; Lifting your hips off the bench during the press." },
+  "Incline Dumbbell Press": { muscle: "Upper Chest, Shoulders", difficulty: "Beginner", equipment: "Dumbbells", form: "Set the bench to a 30-45 degree angle. Sit with dumbbells on your knees. Kick the weights up to your shoulders as you lie back. Press the dumbbells up and slightly inwards until they are almost touching. Lower them slowly and with control until you feel a good stretch in your chest.", tips: "Don't let the dumbbells drift too far apart. Focus on squeezing your chest at the top of the movement. Keep your wrists straight and aligned with your forearms.", progression: "Increase reps first. Once you can hit the top of your target rep range for all sets, move up to the next available dumbbell weight. A greater range of motion is often more important than heavier weight here.", mistakes: "Using too much momentum; Not getting a full range of motion; Setting the incline too high (which targets shoulders more); Letting the dumbbells clang together at the top." },
+  "Overhead Press": { muscle: "Shoulders, Triceps", difficulty: "Intermediate", equipment: "Barbell", form: "Stand with the bar racked at shoulder height. Grip the bar just outside your shoulders. Keep your core tight and glutes squeezed. Press the bar straight overhead, pushing your head slightly through the 'window' created by your arms at the top. Lower with control back to the starting position.", tips: "Avoid using your legs to create momentum (unless performing a push press). Squeeze your glutes and brace your core throughout the lift to protect your lower back. Think about pressing the bar 'to the ceiling'.", progression: "This is a slow lift to progress. Micro-plates (1.25lbs) are your best friend. Add small amounts of weight and focus on perfect form. Volume is also a key driver; adding an extra set can be as effective as adding weight.", mistakes: "Arching the lower back excessively; Pressing the bar in front of the body instead of straight overhead; Bending the knees to generate momentum; Not controlling the descent." },
+  "Pull-Ups": { muscle: "Back, Biceps", difficulty: "Intermediate", equipment: "Pull-up bar", form: "Grip the bar with an overhand grip, slightly wider than your shoulders. Start from a dead hang with arms fully extended. Engage your lats by pulling your shoulder blades down and back. Pull yourself up until your chin is over the bar. Lower yourself back down with control.", tips: "Think about pulling your elbows down to your pockets. Avoid swinging. If you can't do a full pull-up, start with negative pull-ups (jumping to the top and lowering slowly) or use resistance bands for assistance.", progression: "Once you can do 8-10 bodyweight pull-ups with good form, start adding weight using a dip belt. You can also progress by increasing the total number of reps across your sets (e.g., aiming for 25 total reps instead of 3x8).", mistakes: "Using momentum (kipping) unless training for CrossFit; Not going through the full range of motion (starting from a dead hang); Pulling with your biceps instead of your back; Going too fast and not controlling the movement." },
+  "Back Squats": { muscle: "Quads, Glutes, Hamstrings", difficulty: "Advanced", equipment: "Barbell", form: "Place the barbell on your upper traps, not your neck. Grip the bar firmly and pull it down into your back. Stand with your feet shoulder-width apart, toes pointed slightly out. Initiate the movement by breaking at the hips and then the knees. Keep your chest up and your back straight. Squat down until your hip crease is below your knee (breaking parallel). Drive back up through your heels.", tips: "Keep your core braced as if you're about to be punched in the stomach. Your knees should track in line with your toes. Film yourself from the side to check your depth and back angle.", progression: "Form is king. Do not add weight until you can consistently hit proper depth with a neutral spine. Progress by adding 5-10lbs at a time. If you stall, focus on variations like pause squats or box squats to build strength in weak points.", mistakes: "Not squatting deep enough (half squats); Letting your chest fall forward; Knees caving inward (valgus collapse); Lifting your heels off the ground." },
+  "Deadlifts": { muscle: "Full Body", difficulty: "Advanced", equipment: "Barbell", form: "Stand with your mid-foot under the barbell. Hinge at your hips and bend your knees to grip the bar, hands just outside your shins. Keep your back straight, chest up, and shoulders back. Drive through your feet to lift the weight, keeping the bar close to your body. As the bar passes your knees, thrust your hips forward to stand up straight. Lower the bar with control by reversing the motion.", tips: "Take the 'slack' out of the bar before you lift by pulling up slightly until you feel the weight. Your hips and shoulders should rise at the same rate. Wear flat-soled shoes to have a stable base.", progression: "This lift is very taxing. Progress slowly and prioritize recovery. Adding 10lbs at a time is feasible for beginners, but this will slow down. Never sacrifice form for more weight. If your form breaks down on the last rep, the weight is too heavy.", mistakes: "Rounding your lower back (the most dangerous mistake); Jerking the bar off the floor; Letting the bar drift away from your body; Hyperextending your back at the top." }
 };
 
-  const defaultRoutine = {
-    1: { name: "Push (Chest, Shoulders, Triceps)", exercises: [ { id: 1, name: "Flat Barbell Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 2, name: "Incline Dumbbell Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 3, name: "Overhead Press", sets: 3, targetReps: "6-8", restTime: 180 }, { id: 4, name: "Lateral Raises", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 5, name: "Tricep Rope Pushdowns", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 6, name: "Overhead Dumbbell Extension", sets: 2, targetReps: "10-12", restTime: 90 } ] },
-    2: { name: "Pull (Back, Biceps)", exercises: [ { id: 7, name: "Pull-Ups", sets: 4, targetReps: "6-10", restTime: 180 }, { id: 8, name: "Barbell Rows", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 9, name: "Seated Cable Rows", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 10, name: "Face Pulls", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 11, name: "Dumbbell Curls", sets: 3, targetReps: "8-10", restTime: 90 }, { id: 12, name: "Hammer Curls", sets: 2, targetReps: "10-12", restTime: 90 } ] },
-    3: { name: "Legs", exercises: [ { id: 13, name: "Back Squats", sets: 4, targetReps: "6-8", restTime: 240 }, { id: 14, name: "Romanian Deadlifts", sets: 3, targetReps: "8-10", restTime: 180 }, { id: 15, name: "Leg Press", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 16, name: "Walking Lunges", sets: 2, targetReps: "10 per leg", restTime: 120 }, { id: 17, name: "Leg Extensions", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 18, name: "Calf Raises", sets: 4, targetReps: "12-15", restTime: 60 } ] },
-    4: { name: "Arms + Abs", exercises: [ { id: 19, name: "Close-Grip Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 20, name: "Barbell Curls", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 21, name: "Cable Tricep Pushdowns", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 22, name: "Incline Dumbbell Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 23, name: "Skull Crushers", sets: 3, targetReps: "8-10", restTime: 90 }, { id: 24, name: "Hanging Leg Raises", sets: 3, targetReps: "10-15", restTime: 90 }, { id: 25, name: "Cable Crunch", sets: 3, targetReps: "12-15", restTime: 60 } ] },
-    5: { name: "Push (Chest, Shoulders, Triceps)", exercises: [ { id: 26, name: "Incline Barbell Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 27, name: "Flat Dumbbell Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 28, name: "Arnold Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 29, name: "Lateral Raises", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 30, name: "Dips", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 31, name: "Overhead Rope Extensions", sets: 2, targetReps: "10-12", restTime: 90 } ] },
-    6: { name: "Pull (Back, Biceps)", exercises: [ { id: 32, name: "Deadlifts", sets: 4, targetReps: "4-6", restTime: 300 }, { id: 33, name: "Pull-Ups", sets: 3, targetReps: "6-10", restTime: 180 }, { id: 34, name: "T-Bar Rows", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 35, name: "Single Arm Dumbbell Rows", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 36, name: "Preacher Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 37, name: "Hammer Curls", sets: 2, targetReps: "12", restTime: 90 } ] },
-    7: { name: "Legs", exercises: [ { id: 38, name: "Front Squats", sets: 4, targetReps: "6-8", restTime: 240 }, { id: 39, name: "Bulgarian Split Squats", sets: 3, targetReps: "10 per leg", restTime: 120 }, { id: 40, name: "Leg Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 41, name: "Hip Thrusts", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 42, name: "Leg Press", sets: 3, targetReps: "12-15", restTime: 120 }, { id: 43, name: "Calf Raises", sets: 4, targetReps: "12-15", restTime: 60 } ] }
-  };
+const defaultRoutine = {
+  1: { name: "Push (Chest, Shoulders, Triceps)", exercises: [ { id: 1, name: "Flat Barbell Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 2, name: "Incline Dumbbell Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 3, name: "Overhead Press", sets: 3, targetReps: "6-8", restTime: 180 }, { id: 4, name: "Lateral Raises", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 5, name: "Tricep Rope Pushdowns", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 6, name: "Overhead Dumbbell Extension", sets: 2, targetReps: "10-12", restTime: 90 } ] },
+  2: { name: "Pull (Back, Biceps)", exercises: [ { id: 7, name: "Pull-Ups", sets: 4, targetReps: "6-10", restTime: 180 }, { id: 8, name: "Barbell Rows", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 9, name: "Seated Cable Rows", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 10, name: "Face Pulls", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 11, name: "Dumbbell Curls", sets: 3, targetReps: "8-10", restTime: 90 }, { id: 12, name: "Hammer Curls", sets: 2, targetReps: "10-12", restTime: 90 } ] },
+  3: { name: "Legs", exercises: [ { id: 13, name: "Back Squats", sets: 4, targetReps: "6-8", restTime: 240 }, { id: 14, name: "Romanian Deadlifts", sets: 3, targetReps: "8-10", restTime: 180 }, { id: 15, name: "Leg Press", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 16, name: "Walking Lunges", sets: 2, targetReps: "10 per leg", restTime: 120 }, { id: 17, name: "Leg Extensions", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 18, name: "Calf Raises", sets: 4, targetReps: "12-15", restTime: 60 } ] },
+  4: { name: "Arms + Abs", exercises: [ { id: 19, name: "Close-Grip Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 20, name: "Barbell Curls", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 21, name: "Cable Tricep Pushdowns", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 22, name: "Incline Dumbbell Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 23, name: "Skull Crushers", sets: 3, targetReps: "8-10", restTime: 90 }, { id: 24, name: "Hanging Leg Raises", sets: 3, targetReps: "10-15", restTime: 90 }, { id: 25, name: "Cable Crunch", sets: 3, targetReps: "12-15", restTime: 60 } ] },
+  5: { name: "Push (Chest, Shoulders, Triceps)", exercises: [ { id: 26, name: "Incline Barbell Bench Press", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 27, name: "Flat Dumbbell Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 28, name: "Arnold Press", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 29, name: "Lateral Raises", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 30, name: "Dips", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 31, name: "Overhead Rope Extensions", sets: 2, targetReps: "10-12", restTime: 90 } ] },
+  6: { name: "Pull (Back, Biceps)", exercises: [ { id: 32, name: "Deadlifts", sets: 4, targetReps: "4-6", restTime: 300 }, { id: 33, name: "Pull-Ups", sets: 3, targetReps: "6-10", restTime: 180 }, { id: 34, name: "T-Bar Rows", sets: 4, targetReps: "6-8", restTime: 180 }, { id: 35, name: "Single Arm Dumbbell Rows", sets: 3, targetReps: "10-12", restTime: 120 }, { id: 36, name: "Preacher Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 37, name: "Hammer Curls", sets: 2, targetReps: "12", restTime: 90 } ] },
+  7: { name: "Legs", exercises: [ { id: 38, name: "Front Squats", sets: 4, targetReps: "6-8", restTime: 240 }, { id: 39, name: "Bulgarian Split Squats", sets: 3, targetReps: "10 per leg", restTime: 120 }, { id: 40, name: "Leg Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 41, name: "Hip Thrusts", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 42, name: "Leg Press", sets: 3, targetReps: "12-15", restTime: 120 }, { id: 43, name: "Calf Raises", sets: 4, targetReps: "12-15", restTime: 60 } ] }
+};
 
+const WorkoutTracker = () => {
   // --- STATE MANAGEMENT ---
   const [userId, setUserId] = useState(null);
   const [routine, setRoutine] = useState({});
@@ -58,12 +56,16 @@ const firebaseConfig = {
 
   // --- FIREBASE & DATA HANDLING ---
   useEffect(() => {
+    if (!auth) {
+        setIsLoading(false);
+        console.error("Firebase is not initialized. Please check your configuration.");
+        return;
+    }
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUserId(user.uid);
         const userDocRef = doc(db, 'users', user.uid);
         
-        // Set up a real-time listener for user data
         const unsubSnapshot = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
@@ -72,7 +74,6 @@ const firebaseConfig = {
             setWorkoutHistory(data.workoutHistory || []);
             setCurrentDay(data.currentDay || 1);
           } else {
-            // First time user, create their document with default data
             const initialData = {
               routine: defaultRoutine,
               exerciseDatabase: initialExerciseDatabase,
@@ -87,16 +88,16 @@ const firebaseConfig = {
           }
           setIsLoading(false);
         });
-        return () => unsubSnapshot(); // Cleanup listener on unmount
+        return () => unsubSnapshot();
       } else {
         signInAnonymously(auth).catch((error) => console.error("Anonymous sign-in failed:", error));
       }
     });
-    return () => unsubscribe(); // Cleanup auth listener
+    return () => unsubscribe();
   }, []);
 
   const saveDataToFirestore = useCallback(async (dataToSave) => {
-    if (!userId) return;
+    if (!userId || !db) return;
     const userDocRef = doc(db, 'users', userId);
     try {
       await setDoc(userDocRef, dataToSave, { merge: true });
@@ -105,7 +106,6 @@ const firebaseConfig = {
     }
   }, [userId]);
   
-  // Effect to save data whenever it changes
   useEffect(() => {
     if (!isLoading && userId) {
       const dataToSave = {
@@ -122,7 +122,7 @@ const firebaseConfig = {
   // --- LIVE AI FUNCTION ---
   const fetchAiExerciseInfo = async (exerciseName) => {
     console.log(`Fetching REAL AI info for: ${exerciseName}`);
-    const apiKey = "AIzaSyDI5aBiF9Nzif5D2Xo3vyitw-fRPy2uPVA"; // API Key added as requested for testing.
+    const apiKey = "AIzaSyDI5aBiF9Nzif5D2Xo3vyitw-fRPy2uPVA";
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
     const prompt = `
@@ -245,16 +245,13 @@ const firebaseConfig = {
     const duration = workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000 / 60) : 0;
     const completedWorkout = { ...workoutData, completedAt: new Date().toISOString(), duration };
     
-    // Create a new history array and update the current day
     const newHistory = [completedWorkout, ...workoutHistory];
     const dayJustCompleted = workoutData.dayNumber;
     const nextDay = dayJustCompleted >= Object.keys(routine).length ? 1 : dayJustCompleted + 1;
     
-    // Update state locally for immediate UI response
     setWorkoutHistory(newHistory);
     setCurrentDay(nextDay);
 
-    // Reset workout state
     setActiveWorkout(null);
     setWorkoutData({});
     setWorkoutStartTime(null);
