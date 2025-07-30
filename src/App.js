@@ -57,23 +57,36 @@ const WorkoutTracker = () => {
   // --- FIREBASE & DATA HANDLING ---
   useEffect(() => {
     if (!auth) {
-        setIsLoading(false);
-        console.error("Firebase is not initialized. Please check your configuration.");
-        return;
+      setIsLoading(false);
+      console.error("Firebase is not initialized. Please check your configuration.");
+      return;
     }
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", { user: !!user, uid: user?.uid });
+      
       if (user) {
         setUserId(user.uid);
         const userDocRef = doc(db, 'users', user.uid);
         
         const unsubSnapshot = onSnapshot(userDocRef, (docSnap) => {
+          console.log("Firestore document updated:", { exists: docSnap.exists() });
+          
           if (docSnap.exists()) {
             const data = docSnap.data();
+            console.log("Document data:", {
+              routineExists: !!data.routine,
+              exerciseDbExists: !!data.exerciseDatabase,
+              historyLength: data.workoutHistory?.length || 0,
+              currentDay: data.currentDay
+            });
+            
             setRoutine(data.routine || defaultRoutine);
             setExerciseDatabase(data.exerciseDatabase || initialExerciseDatabase);
             setWorkoutHistory(data.workoutHistory || []);
             setCurrentDay(data.currentDay || 1);
           } else {
+            console.log("Document doesn't exist, creating initial data...");
             const initialData = {
               routine: defaultRoutine,
               exerciseDatabase: initialExerciseDatabase,
@@ -81,43 +94,48 @@ const WorkoutTracker = () => {
               currentDay: 1,
             };
             setDoc(userDocRef, initialData);
-            setRoutine(initialData.routine);
-            setExerciseDatabase(initialData.exerciseDatabase);
-            setWorkoutHistory(initialData.workoutHistory);
-            setCurrentDay(initialData.currentDay);
           }
           setIsLoading(false);
+        }, (error) => {
+          console.error("Firestore snapshot error:", error);
+          setIsLoading(false);
         });
+        
         return () => unsubSnapshot();
       } else {
-        signInAnonymously(auth).catch((error) => console.error("Anonymous sign-in failed:", error));
+        console.log("No user, signing in anonymously...");
+        signInAnonymously(auth).catch((error) => {
+          console.error("Anonymous sign-in failed:", error);
+          setIsLoading(false);
+        });
       }
     });
+    
     return () => unsubscribe();
   }, []);
 
   const saveDataToFirestore = useCallback(async (dataToSave) => {
-    if (!userId || !db) return;
+    if (!userId || !db) {
+      console.error("Cannot save: userId or db is null", { userId: !!userId, db: !!db });
+      return;
+    }
+    
     const userDocRef = doc(db, 'users', userId);
+    
     try {
+      console.log("Saving data to Firestore:", { userId, dataKeys: Object.keys(dataToSave) });
       await setDoc(userDocRef, dataToSave, { merge: true });
+      console.log("Data saved successfully");
     } catch (error) {
       console.error("Error saving data to Firestore:", error);
+      console.error("Error details:", {
+        code: error.code,
+        message: error.message,
+        userId,
+        dataToSave
+      });
     }
   }, [userId]);
-  
-  useEffect(() => {
-    if (!isLoading && userId) {
-      const dataToSave = {
-        routine,
-        exerciseDatabase,
-        workoutHistory,
-        currentDay,
-      };
-      saveDataToFirestore(dataToSave);
-    }
-  }, [routine, exerciseDatabase, workoutHistory, currentDay, isLoading, userId, saveDataToFirestore]);
-
 
   // --- LIVE AI FUNCTION ---
   const fetchAiExerciseInfo = async (exerciseName) => {
@@ -178,24 +196,25 @@ const WorkoutTracker = () => {
     }
   };
 
-  const generateExerciseInfo = async (exerciseName, dayNum, exerciseIdx) => {
-      const exerciseId = routine[dayNum].exercises[exerciseIdx].id;
-      setIsGenerating(prev => ({ ...prev, [exerciseId]: true }));
+  const generateExerciseInfo = async (exerciseName) => {
+      const exerciseId = Object.values(routine).flatMap(day => day.exercises).find(ex => ex.name === exerciseName)?.id;
+      if (exerciseId) setIsGenerating(prev => ({ ...prev, [exerciseId]: true }));
       try {
           const newInfo = await fetchAiExerciseInfo(exerciseName);
           if (newInfo && newInfo.muscle !== "Error") {
-            setExerciseDatabase(prevDb => ({ ...prevDb, [exerciseName]: newInfo }));
+            const newDb = { ...exerciseDatabase, [exerciseName]: newInfo };
+            await saveDataToFirestore({ exerciseDatabase: newDb });
           }
       } catch (error) {
           console.error("Failed to generate exercise info:", error);
       } finally {
-          setIsGenerating(prev => ({ ...prev, [exerciseId]: false }));
+          if (exerciseId) setIsGenerating(prev => ({ ...prev, [exerciseId]: false }));
       }
   };
 
   // --- CORE LOGIC FUNCTIONS ---
   const getProgressionSuggestion = (exerciseName, exerciseHistory) => {
-    if (!exerciseHistory || exerciseHistory.length === 0) return { type: "baseline", message: "Start with a comfortable weight to establish your baseline.", suggestion: "Focus on perfect form" };
+    if (!exerciseHistory || exerciseHistory.length === 0) return { type: "baseline", message: "Start with a comfortable weight to establish your baseline.", suggestion: "Focus on perfect form", color: "text-blue-400" };
     const recent = exerciseHistory.slice(0, 3);
     const avgRPE = recent.reduce((sum, w) => {
       const completedSets = w.sets.filter(s => s.weight && s.reps && s.rpe);
@@ -237,21 +256,50 @@ const WorkoutTracker = () => {
     setCurrentView('workout');
   };
 
+  // Fixed updateSet function to prevent keyboard closing
   const updateSet = (exerciseId, setIndex, field, value) => {
-    setWorkoutData(prev => ({ ...prev, exercises: prev.exercises.map(exercise => exercise.id === exerciseId ? { ...exercise, sets: exercise.sets.map((set, index) => index === setIndex ? { ...set, [field]: value } : set ) } : exercise ) }));
+    setWorkoutData(prev => ({
+      ...prev,
+      exercises: prev.exercises.map(exercise =>
+        exercise.id === exerciseId
+          ? {
+              ...exercise,
+              sets: exercise.sets.map((set, index) =>
+                index === setIndex ? { ...set, [field]: value } : set
+              )
+            }
+          : exercise
+      )
+    }));
   };
 
-  const finishWorkout = () => {
+  const finishWorkout = async () => {
+    console.log("Starting finishWorkout...");
+    
     const duration = workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000 / 60) : 0;
-    const completedWorkout = { ...workoutData, completedAt: new Date().toISOString(), duration };
+    const completedWorkout = { 
+      ...workoutData, 
+      completedAt: new Date().toISOString(), 
+      duration,
+      id: workoutData.id || Date.now() // Ensure ID exists
+    };
+    
+    console.log("Completed workout data:", completedWorkout);
     
     const newHistory = [completedWorkout, ...workoutHistory];
     const dayJustCompleted = workoutData.dayNumber;
     const nextDay = dayJustCompleted >= Object.keys(routine).length ? 1 : dayJustCompleted + 1;
     
-    setWorkoutHistory(newHistory);
-    setCurrentDay(nextDay);
+    console.log("New history length:", newHistory.length);
+    console.log("Next day:", nextDay);
+    
+    // Save to Firestore
+    await saveDataToFirestore({ 
+      workoutHistory: newHistory, 
+      currentDay: nextDay 
+    });
 
+    // Reset local state
     setActiveWorkout(null);
     setWorkoutData({});
     setWorkoutStartTime(null);
@@ -266,20 +314,12 @@ const WorkoutTracker = () => {
   };
 
   const deleteWorkout = (workoutId) => {
-    setWorkoutHistory(prev => prev.filter(workout => workout.id !== workoutId));
+    const newHistory = workoutHistory.filter(workout => workout.id !== workoutId);
+    saveDataToFirestore({ workoutHistory: newHistory });
   };
 
-  const updateRoutineExercise = (dayNumber, exerciseIndex, field, value) => {
-    setRoutine(prev => ({ ...prev, [dayNumber]: { ...prev[dayNumber], exercises: prev[dayNumber].exercises.map((ex, idx) => idx === exerciseIndex ? { ...ex, [field]: value } : ex ) } }));
-  };
-
-  const addExerciseToDay = (dayNumber) => {
-    const newId = Date.now();
-    setRoutine(prev => ({ ...prev, [dayNumber]: { ...prev[dayNumber], exercises: [...prev[dayNumber].exercises, { id: newId, name: "New Exercise", sets: 3, targetReps: "8-12", restTime: 120 }] } }));
-  };
-
-  const removeExerciseFromDay = (dayNumber, exerciseIndex) => {
-    setRoutine(prev => ({ ...prev, [dayNumber]: { ...prev[dayNumber], exercises: prev[dayNumber].exercises.filter((_, idx) => idx !== exerciseIndex) } }));
+  const updateRoutine = (newRoutine) => {
+    saveDataToFirestore({ routine: newRoutine });
   };
 
   const formatDate = (dateString) => {
@@ -357,49 +397,80 @@ const WorkoutTracker = () => {
     );
   };
 
-  const RoutineEditorView = () => (
-    <div className="min-h-screen bg-gray-900 text-white font-sans">
-      <div className="container mx-auto px-4 py-6 max-w-md">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Edit Routine</h1>
-          <button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-semibold"><Save size={16} /><span>Save & Close</span></button>
-        </div>
-        <div className="space-y-4">
-          {Object.entries(routine).map(([dayNum, day]) => (
-            <div key={dayNum} className="bg-gray-800 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div><h3 className="font-semibold text-lg">Day {dayNum}</h3><input type="text" value={day.name} onChange={(e) => setRoutine(prev => ({...prev, [dayNum]: { ...prev[dayNum], name: e.target.value }}))} className="bg-gray-700 rounded px-2 py-1 text-sm mt-1 w-full" placeholder="Workout Name"/></div>
-                <button onClick={() => addExerciseToDay(parseInt(dayNum))} className="p-2 bg-blue-600 rounded-full hover:bg-blue-700 transition-colors"><Plus size={16} /></button>
-              </div>
-              <div className="space-y-3">
-                {day.exercises.map((exercise, idx) => {
-                    const hasInfo = exerciseDatabase[exercise.name];
-                    const isLoading = isGenerating[exercise.id];
-                    return (
-                        <div key={exercise.id} className="bg-gray-700 rounded-lg p-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <input type="text" list="exercise-list" value={exercise.name} onChange={(e) => updateRoutineExercise(parseInt(dayNum), idx, 'name', e.target.value)} className="bg-gray-600 rounded px-2 py-1 text-sm font-semibold w-full" placeholder="Exercise name"/>
-                            <div className="flex items-center ml-2">
-                                {!hasInfo && (<button onClick={() => generateExerciseInfo(exercise.name, dayNum, idx)} disabled={isLoading} className="p-1 text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed">{isLoading ? <Loader size={16} className="animate-spin" /> : <Brain size={16} />}</button>)}
-                                <button onClick={() => removeExerciseFromDay(parseInt(dayNum), idx)} className="p-1 text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div><label className="text-xs text-gray-400">Sets</label><input type="number" value={exercise.sets} onChange={(e) => updateRoutineExercise(parseInt(dayNum), idx, 'sets', parseInt(e.target.value) || 0)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm"/></div>
-                            <div><label className="text-xs text-gray-400">Reps</label><input type="text" value={exercise.targetReps} onChange={(e) => updateRoutineExercise(parseInt(dayNum), idx, 'targetReps', e.target.value)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm" placeholder="8-12"/></div>
-                            <div><label className="text-xs text-gray-400">Rest (s)</label><input type="number" value={exercise.restTime} onChange={(e) => updateRoutineExercise(parseInt(dayNum), idx, 'restTime', parseInt(e.target.value) || 0)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm"/></div>
-                          </div>
-                        </div>
-                    );
-                })}
-                 <datalist id="exercise-list">{Object.keys(exerciseDatabase).map(name => <option key={name} value={name} />)}</datalist>
-              </div>
+  const RoutineEditorView = () => {
+    const handleRoutineChange = (newRoutine) => {
+        updateRoutine(newRoutine);
+    };
+
+    const handleDayNameChange = (dayNum, newName) => {
+        const newRoutine = JSON.parse(JSON.stringify(routine));
+        newRoutine[dayNum].name = newName;
+        handleRoutineChange(newRoutine);
+    };
+
+    const handleExerciseChange = (dayNum, exIndex, field, value) => {
+        const newRoutine = JSON.parse(JSON.stringify(routine));
+        newRoutine[dayNum].exercises[exIndex][field] = value;
+        handleRoutineChange(newRoutine);
+    };
+
+    const handleAddExercise = (dayNum) => {
+        const newId = Date.now();
+        const newRoutine = JSON.parse(JSON.stringify(routine));
+        newRoutine[dayNum].exercises.push({ id: newId, name: "New Exercise", sets: 3, targetReps: "8-12", restTime: 120 });
+        handleRoutineChange(newRoutine);
+    };
+
+    const handleRemoveExercise = (dayNum, exIndex) => {
+        const newRoutine = JSON.parse(JSON.stringify(routine));
+        newRoutine[dayNum].exercises.splice(exIndex, 1);
+        handleRoutineChange(newRoutine);
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white font-sans">
+          <div className="container mx-auto px-4 py-6 max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-2xl font-bold">Edit Routine</h1>
+              <button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-semibold"><Save size={16} /><span>Save & Close</span></button>
             </div>
-          ))}
+            <div className="space-y-4">
+              {Object.entries(routine).map(([dayNum, day]) => (
+                <div key={dayNum} className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div><h3 className="font-semibold text-lg">Day {dayNum}</h3><input type="text" value={day.name} onChange={(e) => handleDayNameChange(parseInt(dayNum), e.target.value)} className="bg-gray-700 rounded px-2 py-1 text-sm mt-1 w-full" placeholder="Workout Name"/></div>
+                    <button onClick={() => handleAddExercise(parseInt(dayNum))} className="p-2 bg-blue-600 rounded-full hover:bg-blue-700 transition-colors"><Plus size={16} /></button>
+                  </div>
+                  <div className="space-y-3">
+                    {day.exercises.map((exercise, idx) => {
+                        const hasInfo = exerciseDatabase[exercise.name];
+                        const isLoading = isGenerating[exercise.id];
+                        return (
+                            <div key={exercise.id} className="bg-gray-700 rounded-lg p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <input type="text" list="exercise-list" value={exercise.name} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'name', e.target.value)} className="bg-gray-600 rounded px-2 py-1 text-sm font-semibold w-full" placeholder="Exercise name"/>
+                                <div className="flex items-center ml-2">
+                                    {!hasInfo && (<button onClick={() => generateExerciseInfo(exercise.name)} disabled={isLoading} className="p-1 text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed">{isLoading ? <Loader size={16} className="animate-spin" /> : <Brain size={16} />}</button>)}
+                                    <button onClick={() => handleRemoveExercise(parseInt(dayNum), idx)} className="p-1 text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div><label className="text-xs text-gray-400">Sets</label><input type="number" value={exercise.sets} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'sets', parseInt(e.target.value) || 0)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm"/></div>
+                                <div><label className="text-xs text-gray-400">Reps</label><input type="text" value={exercise.targetReps} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'targetReps', e.target.value)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm" placeholder="8-12"/></div>
+                                <div><label className="text-xs text-gray-400">Rest (s)</label><input type="number" value={exercise.restTime} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'restTime', parseInt(e.target.value) || 0)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm"/></div>
+                              </div>
+                            </div>
+                        );
+                    })}
+                     <datalist id="exercise-list">{Object.keys(exerciseDatabase).map(name => <option key={name} value={name} />)}</datalist>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const MainView = () => {
     const stats = getVolumeStats();
@@ -496,9 +567,36 @@ const WorkoutTracker = () => {
                   {exercise.sets.map((set, setIndex) => (
                     <div key={setIndex} className="grid grid-cols-4 gap-2 items-center">
                       <span className="text-center font-bold text-gray-400">{setIndex + 1}</span>
-                      <input type="number" placeholder={history[0]?.sets[setIndex]?.weight || "0"} value={set.weight} onChange={(e) => updateSet(exercise.id, setIndex, 'weight', e.target.value)} className="w-full bg-gray-700 rounded px-2 py-2 text-center"/>
-                      <input type="number" placeholder={history[0]?.sets[setIndex]?.reps || "0"} value={set.reps} onChange={(e) => updateSet(exercise.id, setIndex, 'reps', e.target.value)} className="w-full bg-gray-700 rounded px-2 py-2 text-center"/>
-                      <input type="number" placeholder={history[0]?.sets[setIndex]?.rpe || "8"} value={set.rpe} onChange={(e) => updateSet(exercise.id, setIndex, 'rpe', e.target.value)} className="w-full bg-gray-700 rounded px-2 py-2 text-center"/>
+                      <input 
+                        type="number" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder={history[0]?.sets[setIndex]?.weight || "0"} 
+                        value={set.weight} 
+                        onChange={(e) => updateSet(exercise.id, setIndex, 'weight', e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full bg-gray-700 rounded px-2 py-2 text-center"
+                      />
+                      <input 
+                        type="number" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder={history[0]?.sets[setIndex]?.reps || "0"} 
+                        value={set.reps} 
+                        onChange={(e) => updateSet(exercise.id, setIndex, 'reps', e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full bg-gray-700 rounded px-2 py-2 text-center"
+                      />
+                      <input 
+                        type="number" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder={history[0]?.sets[setIndex]?.rpe || "8"} 
+                        value={set.rpe} 
+                        onChange={(e) => updateSet(exercise.id, setIndex, 'rpe', e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full bg-gray-700 rounded px-2 py-2 text-center"
+                      />
                     </div>
                   ))}
                 </div>
