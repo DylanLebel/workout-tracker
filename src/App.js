@@ -5,13 +5,28 @@ import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWith
 import { getDatabase, ref, onValue, set, update } from 'firebase/database';
 
 // --- INITIAL STATE & DEFAULTS ---
-const newDefaultRoutine = {
-  id: `routine_${Date.now()}`,
+
+// This is the detailed routine for the primary user (you).
+const adminRoutine = {
+  id: `routine_admin_${Date.now()}`,
+  name: "Bodybuilding Split",
+  days: {
+    1: { name: "Push (Chest + Shoulders + Triceps)", exercises: [ { id: 1, name: "Flat Dumbbell Bench Press", sets: 4, targetReps: "2x 6-8, 2x 10-12", restTime: 120 }, { id: 2, name: "Incline Barbell Press", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 3, name: "Smith Machine Incline Press", sets: 3, targetReps: "10-12 (slow negatives)", restTime: 90 }, { id: 4, name: "Cable Fly (High to Low)", sets: 3, targetReps: "12-15 (2s squeeze)", restTime: 60 }, { id: 5, name: "Overhead Rope Tricep Extension", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 6, name: "V-Bar Pushdown", sets: 3, targetReps: "10-12 + drop set", restTime: 60 }, { id: 7, name: "Dumbbell Lateral Raise", sets: 4, targetReps: "12-15", restTime: 60 }, { id: 8, name: "Face Pull", sets: 3, targetReps: "12-15", restTime: 60 } ] },
+    2: { name: "Pull (Back + Biceps)", exercises: [ { id: 9, name: "Pull-Ups (Weighted)", sets: 4, targetReps: "6-10", restTime: 150 }, { id: 10, name: "Wide-Grip Lat Pulldown", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 11, name: "Smith Underhand Row", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 12, name: "Seated Single-Arm Cable Row", sets: 3, targetReps: "10-12 per arm", restTime: 90 }, { id: 13, name: "Dumbbell Bicep Curl (Seated)", sets: 3, targetReps: "8-10", restTime: 60 }, { id: 14, name: "Incline Dumbbell Curl", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 15, name: "Reverse Pec Deck", sets: 3, targetReps: "12-15", restTime: 60 } ] },
+    3: { name: "Legs (Quads + Hamstrings + Calves)", exercises: [ { id: 16, name: "Seated Hamstring Curl", sets: 4, targetReps: "8-12 (last set drop)", restTime: 90 }, { id: 17, name: "Pendulum Squat", sets: 4, targetReps: "6-8 heavy, 10-12 lighter", restTime: 180 }, { id: 18, name: "Walking Dumbbell Lunges", sets: 3, targetReps: "10 steps/leg", restTime: 120 }, { id: 19, name: "Leg Press (Feet Low)", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 20, name: "Leg Extension", sets: 3, targetReps: "12-15 (slow squeeze)", restTime: 90 }, { id: 21, name: "Cable Abductor", sets: 3, targetReps: "12-15", restTime: 60 }, { id: 22, name: "Standing Calf Raise", sets: 5, targetReps: "10-12 (2s squeeze)", restTime: 60 } ] },
+    4: { name: "Arms + Abs", exercises: [ { id: 23, name: "Seated Dumbbell Curl", sets: 3, targetReps: "8-10", restTime: 60 }, { id: 24, name: "Preacher Curl", sets: 3, targetReps: "8-12", restTime: 60 }, { id: 25, name: "Hammer Curl", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 26, name: "Overhead Rope Extension", sets: 3, targetReps: "8-10", restTime: 60 }, { id: 27, name: "V-Bar Pushdowns", sets: 3, targetReps: "10-12 + drop set", restTime: 60 }, { id: 28, name: "Dips", sets: 3, targetReps: "8-12 (to failure)", restTime: 90 }, { id: 29, name: "Cable Crunch", sets: 3, targetReps: "12-15", restTime: 60 }, { id: 30, name: "Hanging Knee Raises", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 31, name: "Plank", sets: 2, targetReps: "45 sec", restTime: 60 } ] },
+    5: { name: "Push (Chest + Shoulders + Triceps)", exercises: [ { id: 32, name: "Flat Barbell Bench Press", sets: 4, targetReps: "6-8 heavy, 10-12 lighter", restTime: 150 }, { id: 33, name: "Incline Dumbbell Press", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 34, name: "Cable Fly (Low to High)", sets: 3, targetReps: "12-15", restTime: 60 }, { id: 35, name: "Overhead Rope Extension", sets: 3, targetReps: "8-10", restTime: 60 }, { id: 36, name: "V-Bar Pushdown", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 37, name: "Dumbbell Lateral Raise", sets: 4, targetReps: "12-15", restTime: 60 }, { id: 38, name: "Face Pull", sets: 3, targetReps: "12-15", restTime: 60 } ] },
+    6: { name: "Pull (Back + Biceps)", exercises: [ { id: 39, name: "Pull-Ups (Weighted)", sets: 4, targetReps: "6-10", restTime: 150 }, { id: 40, name: "Wide Lat Pulldown", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 41, name: "Dumbbell Row (One Arm)", sets: 4, targetReps: "8-10 per side", restTime: 90 }, { id: 42, name: "Lat Pullovers", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 43, name: "Incline Dumbbell Curl", sets: 3, targetReps: "8-10", restTime: 60 }, { id: 44, name: "Spider Curl", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 45, name: "Face Pull", sets: 3, targetReps: "12-15", restTime: 60 } ] },
+    7: { name: "Legs + Abs", exercises: [ { id: 46, name: "Seated Hamstring Curl", sets: 4, targetReps: "8-12", restTime: 90 }, { id: 47, name: "Bulgarian Split Squat", sets: 3, targetReps: "8-10 each leg", restTime: 120 }, { id: 48, name: "Smith Squat", sets: 4, targetReps: "6-8 heavy, 10-12 lighter", restTime: 180 }, { id: 49, name: "Leg Extension", sets: 3, targetReps: "12-15", restTime: 90 }, { id: 50, name: "Hip Thrust", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 51, name: "Standing Calf Raise", sets: 5, targetReps: "10-12", restTime: 60 }, { id: 52, name: "Cable Crunch", sets: 3, targetReps: "12-15", restTime: 60 }, { id: 53, name: "Side Plank", sets: 2, targetReps: "30 sec each side", restTime: 60 }, { id: 54, name: "Decline Sit-Ups", sets: 3, targetReps: "10-12", restTime: 60 } ] },
+  }
+};
+
+// This is the blank slate for all new users.
+const blankRoutineForNewUsers = {
+  id: `routine_blank_${Date.now()}`,
   name: "My First Routine",
   days: {
-    1: { name: "Push (Chest + Shoulders + Triceps)", exercises: [ { id: 1, name: "Flat Dumbbell Bench Press", sets: 4, targetReps: "2x 6-8, 2x 10-12", restTime: 120 }, { id: 2, name: "Incline Barbell Press", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 3, name: "Smith Machine Incline Press", sets: 3, targetReps: "10-12 (slow negatives)", restTime: 90 }] },
-    2: { name: "Pull (Back + Biceps)", exercises: [ { id: 9, name: "Pull-Ups (Weighted)", sets: 4, targetReps: "6-10", restTime: 150 }, { id: 10, name: "Wide-Grip Lat Pulldown", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 11, name: "Smith Underhand Row", sets: 4, targetReps: "8-10", restTime: 120 }] },
-    3: { name: "Legs (Quads + Hamstrings + Calves)", exercises: [ { id: 16, name: "Seated Hamstring Curl", sets: 4, targetReps: "8-12 (last set drop)", restTime: 90 }, { id: 17, name: "Pendulum Squat", sets: 4, targetReps: "6-8 heavy, 10-12 lighter", restTime: 180 }, { id: 18, name: "Walking Dumbbell Lunges", sets: 3, targetReps: "10 steps/leg", restTime: 120 }] },
+    1: { name: "New Day", exercises: [] }
   }
 };
 
@@ -99,6 +114,7 @@ const App = () => {
         }
 
         const appId = "my-workout-tracker-app-d8d61";
+        const adminUserId = "dTF8r04xSUVzpGxtnJqaxx2eQ6I3"; // Your specific User ID
         
         const publicExercisesRef = ref(db, `artifacts/${appId}/public/data/exercises`);
         const unsubscribePublic = onValue(publicExercisesRef, (snapshot) => {
@@ -130,7 +146,7 @@ const App = () => {
                         setRoutines(data.routines.allRoutines);
                         setActiveRoutineId(data.routines.activeRoutineId);
                     } else {
-                         const newRoutinesData = { activeRoutineId: newDefaultRoutine.id, allRoutines: { [newDefaultRoutine.id]: newDefaultRoutine } };
+                         const newRoutinesData = { activeRoutineId: blankRoutineForNewUsers.id, allRoutines: { [blankRoutineForNewUsers.id]: blankRoutineForNewUsers } };
                          setRoutines(newRoutinesData.allRoutines);
                          setActiveRoutineId(newRoutinesData.activeRoutineId);
                     }
@@ -143,7 +159,10 @@ const App = () => {
                 }
             } else {
                 setCurrentView('profileSetup');
-                const newRoutinesData = { activeRoutineId: newDefaultRoutine.id, allRoutines: { [newDefaultRoutine.id]: newDefaultRoutine } };
+                const isPrimaryUser = user.uid === adminUserId;
+                const initialRoutine = isPrimaryUser ? adminRoutine : blankRoutineForNewUsers;
+                const newRoutinesData = { activeRoutineId: initialRoutine.id, allRoutines: { [initialRoutine.id]: initialRoutine } };
+                
                 setUserProfile(defaultProfile);
                 setRoutines(newRoutinesData.allRoutines);
                 setActiveRoutineId(newRoutinesData.activeRoutineId);
@@ -373,11 +392,28 @@ const App = () => {
         await saveDataToRTDB({ routines: updatedRoutines });
     }, [routines, activeRoutineId, saveDataToRTDB]);
 
-    const updateUserProfile = useCallback(async (newProfile) => {
+    const updateUserProfile = useCallback(async (newProfile, isInitialSetup) => {
         const profileToSave = {...newProfile, setupComplete: true};
         setUserProfile(profileToSave);
-        await saveDataToRTDB({ profile: profileToSave });
-    }, [saveDataToRTDB]);
+
+        if (isInitialSetup) {
+            const appId = "my-workout-tracker-app-d8d61";
+            const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
+            const isPrimaryUser = user.uid === "dTF8r04xSUVzpGxtnJqaxx2eQ6I3";
+            const initialRoutine = isPrimaryUser ? adminRoutine : blankRoutineForNewUsers;
+            const newRoutinesData = { activeRoutineId: initialRoutine.id, allRoutines: { [initialRoutine.id]: initialRoutine } };
+            
+            const initialUserData = {
+                profile: profileToSave,
+                routines: newRoutinesData,
+                history: [],
+                currentDay: 1
+            };
+            await set(userRef, initialUserData);
+        } else {
+            await saveDataToRTDB({ profile: profileToSave });
+        }
+    }, [db, user, saveDataToRTDB]);
 
     const formatDate = useCallback((dateString) => {
         if (!dateString) return 'N/A';
@@ -626,7 +662,7 @@ const App = () => {
         const [editingProfile, setEditingProfile] = useState(userProfile);
     
         const handleSave = () => {
-            updateUserProfile(editingProfile);
+            updateUserProfile(editingProfile, isSetup);
             showNotification(isSetup ? "Profile Created!" : "Profile Saved!");
             setCurrentView('routine');
         };
