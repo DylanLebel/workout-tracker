@@ -1,23 +1,5 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader, User } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
-
-// --- FIREBASE CONFIGURATION ---
-const firebaseConfig = {
-  apiKey: "AIzaSyDM3i689ESBlBx2pEEy05MZ5c3IY3PQp3w",
-  authDomain: "my-workout-tracker-app-d8d61.firebaseapp.com",
-  projectId: "my-workout-tracker-app-d8d61",
-  storageBucket: "my-workout-tracker-app-d8d61.appspot.com",
-  messagingSenderId: "321079278500",
-  appId: "1:321079278500:web:587525f6cea6829745df31"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+﻿import React, { useState, useEffect, useCallback, memo } from 'react';
+import { Calendar, Plus, Trash2, Info, Edit3, Save, X, ChevronRight, BarChart3, Brain, Zap, Loader, User, Clock, Target, TrendingUp } from 'lucide-react';
 
 // --- CONSTANTS for Initial State ---
 const initialExerciseDatabase = {
@@ -39,309 +21,11 @@ const defaultRoutine = {
   7: { name: "Legs", exercises: [ { id: 38, name: "Front Squats", sets: 4, targetReps: "6-8", restTime: 240 }, { id: 39, name: "Bulgarian Split Squats", sets: 3, targetReps: "10 per leg", restTime: 120 }, { id: 40, name: "Leg Curls", sets: 3, targetReps: "10-12", restTime: 90 }, { id: 41, name: "Hip Thrusts", sets: 3, targetReps: "8-10", restTime: 120 }, { id: 42, name: "Leg Press", sets: 3, targetReps: "12-15", restTime: 120 }, { id: 43, name: "Calf Raises", sets: 4, targetReps: "12-15", restTime: 60 } ] }
 };
 
-// --- UI COMPONENTS (Moved outside main component to prevent re-creation on re-render) ---
-
-const ExerciseInfoModal = ({ exercise, exerciseDatabase, getExerciseHistory, getProgressionSuggestion, onClose }) => {
-    const info = exerciseDatabase[exercise.name] || { muscle: "Unknown", difficulty: "N/A", equipment: "N/A", tips: "No information available. Generate it with AI in the routine editor.", form: "No information available. Generate it with AI in the routine editor.", progression: "No information available. Generate it with AI in the routine editor.", mistakes: "No information available. Generate it with AI in the routine editor." };
-    const history = getExerciseHistory(exercise.name);
-    const suggestion = getProgressionSuggestion(exercise.name, history);
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto shadow-lg">
-          <div className="flex justify-between items-center p-4 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-            <h2 className="text-xl font-bold">{exercise.name}</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
-          </div>
-          <div className="p-4 space-y-6">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><span className="text-gray-400">Primary Muscle:</span><p className="font-semibold text-blue-400">{info.muscle}</p></div>
-              <div><span className="text-gray-400">Difficulty:</span><p className="font-semibold">{info.difficulty}</p></div>
-              <div><span className="text-gray-400">Equipment:</span><p className="font-semibold">{info.equipment}</p></div>
-              <div><span className="text-gray-400">Rest Time:</span><p className="font-semibold">{exercise.restTime}s</p></div>
-            </div>
-            <div>
-              <h3 className="font-semibold text-green-400 mb-2 flex items-center"><Brain size={16} className="mr-2" /> AI Progression Advice</h3>
-              <div className={`p-3 bg-gray-700 rounded-lg ${suggestion.color}`}>
-                <p className="font-medium">{suggestion.message}</p>
-                <p className="text-sm mt-1">{suggestion.suggestion}</p>
-              </div>
-            </div>
-            <div><h3 className="font-semibold text-yellow-400 mb-2">How to Perform</h3><p className="text-sm text-gray-300 whitespace-pre-line">{info.form}</p></div>
-            <div><h3 className="font-semibold text-purple-400 mb-2">Pro Tips</h3><p className="text-sm text-gray-300 whitespace-pre-line">{info.tips}</p></div>
-            <div><h3 className="font-semibold text-red-400 mb-2">Common Mistakes</h3><p className="text-sm text-gray-300 whitespace-pre-line">{info.mistakes}</p></div>
-            <div><h3 className="font-semibold text-cyan-400 mb-2">Progression Strategy</h3><p className="text-sm text-gray-300 whitespace-pre-line">{info.progression}</p></div>
-            {history.length > 0 && (
-              <div>
-                <h3 className="font-semibold text-orange-400 mb-2">Recent Performance</h3>
-                <div className="space-y-2">
-                  {history.slice(0, 3).map((hist, idx) => {
-                    const bestSet = hist.sets.reduce((best, set) => {
-                      const weight = parseFloat(set.weight) || 0;
-                      return weight > (parseFloat(best.weight) || 0) ? set : best;
-                    }, { weight: 0, reps: 0, rpe: 0 });
-                    return (
-                      <div key={idx} className="flex justify-between text-sm bg-gray-700 p-2 rounded">
-                        <div><span className="font-semibold">{bestSet.weight || 0}lbs × {bestSet.reps || 0} reps</span><span className="text-gray-400 ml-2">(RPE {bestSet.rpe || 'N/A'})</span></div>
-                        <span className="text-gray-500">{formatDate(hist.completedAt)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-};
-
-const RoutineEditorView = ({ routine, exerciseDatabase, isGenerating, setCurrentView, updateRoutine, generateExerciseInfo }) => {
-    const handleDayNameChange = (dayNum, newName) => {
-        const newRoutine = JSON.parse(JSON.stringify(routine));
-        newRoutine[dayNum].name = newName;
-        updateRoutine(newRoutine);
-    };
-
-    const handleExerciseChange = (dayNum, exIndex, field, value) => {
-        const newRoutine = JSON.parse(JSON.stringify(routine));
-        newRoutine[dayNum].exercises[exIndex][field] = value;
-        updateRoutine(newRoutine);
-    };
-
-    const handleAddExercise = (dayNum) => {
-        const newId = Date.now();
-        const newRoutine = JSON.parse(JSON.stringify(routine));
-        newRoutine[dayNum].exercises.push({ id: newId, name: "New Exercise", sets: 3, targetReps: "8-12", restTime: 120 });
-        updateRoutine(newRoutine);
-    };
-
-    const handleRemoveExercise = (dayNum, exIndex) => {
-        const newRoutine = JSON.parse(JSON.stringify(routine));
-        newRoutine[dayNum].exercises.splice(exIndex, 1);
-        updateRoutine(newRoutine);
-    };
-
-    return (
-        <div className="min-h-screen bg-gray-900 text-white font-sans">
-          <div className="container mx-auto px-4 py-6 max-w-md">
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-2xl font-bold">Edit Routine</h1>
-              <button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-semibold"><Save size={16} /><span>Save & Close</span></button>
-            </div>
-            <div className="space-y-4">
-              {Object.entries(routine).map(([dayNum, day]) => (
-                <div key={dayNum} className="bg-gray-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div><h3 className="font-semibold text-lg">Day {dayNum}</h3><input type="text" value={day.name} onChange={(e) => handleDayNameChange(parseInt(dayNum), e.target.value)} className="bg-gray-700 rounded px-2 py-1 text-sm mt-1 w-full" placeholder="Workout Name"/></div>
-                    <button onClick={() => handleAddExercise(parseInt(dayNum))} className="p-2 bg-blue-600 rounded-full hover:bg-blue-700 transition-colors"><Plus size={16} /></button>
-                  </div>
-                  <div className="space-y-3">
-                    {day.exercises.map((exercise, idx) => {
-                        const hasInfo = exerciseDatabase[exercise.name];
-                        const isLoading = isGenerating[exercise.id];
-                        return (
-                            <div key={exercise.id} className="bg-gray-700 rounded-lg p-3">
-                              <div className="flex justify-between items-center mb-2">
-                                <input type="text" list="exercise-list" value={exercise.name} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'name', e.target.value)} className="bg-gray-600 rounded px-2 py-1 text-sm font-semibold w-full" placeholder="Exercise name"/>
-                                <div className="flex items-center ml-2">
-                                    {!hasInfo && (<button onClick={() => generateExerciseInfo(exercise.name)} disabled={isLoading} className="p-1 text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed">{isLoading ? <Loader size={16} className="animate-spin" /> : <Brain size={16} />}</button>)}
-                                    <button onClick={() => handleRemoveExercise(parseInt(dayNum), idx)} className="p-1 text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div><label className="text-xs text-gray-400">Sets</label><input type="number" value={exercise.sets} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'sets', parseInt(e.target.value) || 0)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm"/></div>
-                                <div><label className="text-xs text-gray-400">Reps</label><input type="text" value={exercise.targetReps} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'targetReps', e.target.value)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm" placeholder="8-12"/></div>
-                                <div><label className="text-xs text-gray-400">Rest (s)</label><input type="number" value={exercise.restTime} onChange={(e) => handleExerciseChange(parseInt(dayNum), idx, 'restTime', parseInt(e.target.value) || 0)} className="w-full bg-gray-600 rounded px-2 py-1 text-sm"/></div>
-                              </div>
-                            </div>
-                        );
-                    })}
-                     <datalist id="exercise-list">{Object.keys(exerciseDatabase).map(name => <option key={name} value={name} />)}</datalist>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-    );
-};
-
-const MainView = ({ routine, currentDay, getVolumeStats, setCurrentView, startWorkout, setShowExerciseInfo, userId }) => {
-    const stats = getVolumeStats();
-    const [showUserModal, setShowUserModal] = useState(false);
-    
-    return (
-      <div className="min-h-screen bg-gray-900 text-white font-sans">
-        <div className="container mx-auto px-4 py-6 max-w-md">
-          <div className="flex items-center justify-between mb-6">
-            <div><h1 className="text-2xl font-bold">Smart Training</h1><p className="text-gray-400">Next Up: Day {currentDay} • {routine[currentDay]?.name || 'Rest Day'}</p></div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowUserModal(true)} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="User Info"><User size={20} /></button>
-              <button onClick={() => setCurrentView('analytics')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="View Analytics"><BarChart3 size={20} /></button>
-              <button onClick={() => setCurrentView('history')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="View History"><Calendar size={20} /></button>
-              <button onClick={() => setCurrentView('editRoutine')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700" aria-label="Edit Routine"><Edit3 size={20} /></button>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-gray-800 rounded-lg p-3 text-center"><div className="text-blue-400 text-2xl font-bold">{stats.workouts}</div><div className="text-xs text-gray-400">Workouts</div><div className="text-xs text-gray-500">Last 4 weeks</div></div>
-            <div className="bg-gray-800 rounded-lg p-3 text-center"><div className="text-green-400 text-2xl font-bold">{stats.sets}</div><div className="text-xs text-gray-400">Total Sets</div><div className="text-xs text-gray-500">Volume</div></div>
-            <div className="bg-gray-800 rounded-lg p-3 text-center"><div className="text-purple-400 text-2xl font-bold">{stats.avgDuration}</div><div className="text-xs text-gray-400">Avg Duration</div><div className="text-xs text-gray-500">Minutes</div></div>
-          </div>
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold mb-2">Choose a Session</h2>
-            {Object.entries(routine).map(([dayNum, day]) => (
-                <div key={dayNum} className={`p-4 rounded-lg transition-all border-2 ${parseInt(dayNum) === currentDay ? 'bg-gray-700 border-green-500' : 'bg-gray-800 border-transparent hover:border-gray-600'}`}>
-                    <div className="flex justify-between items-center">
-                        <div><p className="text-sm text-gray-400">Day {dayNum}</p><p className="font-bold text-lg">{day.name}</p></div>
-                        <button onClick={() => startWorkout(dayNum)} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Zap size={16} /><span>Start</span></button>
-                    </div>
-                    {parseInt(dayNum) === currentDay && (<p className="text-xs text-green-400 mt-2 font-semibold">Next up!</p>)}
-                </div>
-            ))}
-          </div>
-        </div>
-        {showUserModal && <UserModal userId={userId} onClose={() => setShowUserModal(false)} />}
-      </div>
-    );
-};
-
-const UserModal = ({ userId, onClose }) => {
-    const [copied, setCopied] = useState(false);
-
-    const copyToClipboard = () => {
-        navigator.clipboard.writeText(userId).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        });
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg max-w-sm w-full p-6 relative">
-                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
-                <h2 className="text-xl font-bold mb-4">Your User ID</h2>
-                <p className="text-sm text-gray-400 mb-4">This is your unique ID. Save it to access your data on other devices. There is no other way to recover your account.</p>
-                <div className="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
-                    <span className="text-sm font-mono truncate">{userId}</span>
-                    <button onClick={copyToClipboard} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm">
-                        {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const ActiveWorkoutView = ({ activeWorkout, workoutData, updateSet, finishWorkout, cancelWorkout, setShowExerciseInfo, getExerciseHistory, getProgressionSuggestion }) => (
-    <div className="min-h-screen bg-gray-900 text-white font-sans">
-      <div className="container mx-auto px-4 py-6 max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <div><h1 className="text-2xl font-bold">{activeWorkout.name}</h1><p className="text-gray-400">Log your performance</p></div>
-          <button onClick={cancelWorkout} className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600" aria-label="Cancel Workout"><X size={16} /></button>
-        </div>
-        <div className="space-y-4">
-          {workoutData.exercises.map((exercise) => {
-            const history = getExerciseHistory(exercise.name);
-            const suggestion = getProgressionSuggestion(exercise.name, history);
-            return (
-              <div key={exercise.id} className="bg-gray-800 rounded-lg p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-semibold">{exercise.name}</h3>
-                  <button onClick={() => setShowExerciseInfo(exercise)} className="text-gray-400 hover:text-white"><Info size={18} /></button>
-                </div>
-                <div className={`p-3 bg-gray-700 rounded-lg mb-4 text-sm ${suggestion.color}`}>
-                  <p className="font-medium flex items-center gap-2"><Brain size={16} />{suggestion.message}</p>
-                  <p className="text-xs mt-1 pl-6">{suggestion.suggestion}</p>
-                </div>
-                <div className="grid grid-cols-4 gap-2 text-center text-xs text-gray-400 mb-2">
-                  <span>SET</span><span>WEIGHT (lbs)</span><span>REPS</span><span>RPE</span>
-                </div>
-                <div className="space-y-2">
-                  {exercise.sets.map((set, setIndex) => (
-                    <div key={`${exercise.id}-${setIndex}`} className="grid grid-cols-4 gap-2 items-center">
-                      <span className="text-center font-bold text-gray-400">{setIndex + 1}</span>
-                      <input type="number" placeholder={history[0]?.sets[setIndex]?.weight || "0"} value={set.weight} onChange={(e) => updateSet(exercise.id, setIndex, 'weight', e.target.value)} className="w-full bg-gray-700 rounded px-2 py-2 text-center"/>
-                      <input type="number" placeholder={history[0]?.sets[setIndex]?.reps || "0"} value={set.reps} onChange={(e) => updateSet(exercise.id, setIndex, 'reps', e.target.value)} className="w-full bg-gray-700 rounded px-2 py-2 text-center"/>
-                      <input type="number" placeholder={history[0]?.sets[setIndex]?.rpe || "8"} value={set.rpe} onChange={(e) => updateSet(exercise.id, setIndex, 'rpe', e.target.value)} className="w-full bg-gray-700 rounded px-2 py-2 text-center"/>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <button onClick={finishWorkout} className="w-full mt-6 py-3 bg-green-600 rounded-lg font-bold text-lg hover:bg-green-700 transition-colors">Finish Workout</button>
-      </div>
-    </div>
-);
-
-const HistoryView = ({ workoutHistory, setCurrentView, deleteWorkout, formatDate }) => (
-    <div className="min-h-screen bg-gray-900 text-white font-sans">
-      <div className="container mx-auto px-4 py-6 max-w-md">
-        <div className="flex items-center mb-6">
-          <button onClick={() => setCurrentView('routine')} className="p-2 mr-4 bg-gray-800 rounded-lg hover:bg-gray-700"><ChevronRight className="transform rotate-180" size={20} /></button>
-          <h1 className="text-2xl font-bold">Workout History</h1>
-        </div>
-        <div className="space-y-4">
-          {workoutHistory.length > 0 ? (
-            workoutHistory.map(workout => (
-              <div key={workout.id} className="bg-gray-800 rounded-lg p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-bold">{workout.name}</p>
-                    <p className="text-sm text-gray-400">{formatDate(workout.date)}</p>
-                    <p className="text-xs text-gray-500 mt-1">Duration: {workout.duration || 0} mins</p>
-                  </div>
-                  <button onClick={() => { if (window.confirm('Are you sure you want to delete this workout?')) { deleteWorkout(workout.id) }}} className="p-2 text-red-500 hover:text-red-400" aria-label="Delete Workout"><Trash2 size={18} /></button>
-                </div>
-                <div className="mt-4 space-y-2 text-sm">
-                  {workout.exercises.map(ex => (
-                    <div key={ex.id} className="flex justify-between text-gray-300">
-                      <span>{ex.name}</span>
-                      <span>{ex.sets.filter(s => s.weight && s.reps).length} / {ex.sets.length} sets</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center text-gray-500 py-10">
-              <Calendar size={48} className="mx-auto mb-4" />
-              <p>No workout history yet.</p>
-              <p>Complete a workout to see it here.</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-);
-
-const AnalyticsView = ({ setCurrentView }) => (
-    <div className="min-h-screen bg-gray-900 text-white font-sans">
-      <div className="container mx-auto px-4 py-6 max-w-md">
-        <div className="flex items-center mb-6">
-          <button onClick={() => setCurrentView('routine')} className="p-2 mr-4 bg-gray-800 rounded-lg hover:bg-gray-700"><ChevronRight className="transform rotate-180" size={20} /></button>
-          <h1 className="text-2xl font-bold">Analytics</h1>
-        </div>
-        <div className="text-center text-gray-500 py-10 bg-gray-800 rounded-lg">
-          <BarChart3 size={48} className="mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-white">Analytics Coming Soon!</h2>
-          <p>Track your progress with insightful charts and graphs.</p>
-        </div>
-      </div>
-    </div>
-);
-
 const WorkoutTracker = () => {
   // --- STATE MANAGEMENT ---
   const [userId, setUserId] = useState(null);
-  const [routine, setRoutine] = useState({});
-  const [exerciseDatabase, setExerciseDatabase] = useState({});
+  const [routine, setRoutine] = useState(defaultRoutine);
+  const [exerciseDatabase, setExerciseDatabase] = useState(initialExerciseDatabase);
   const [currentView, setCurrentView] = useState('routine');
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [workoutHistory, setWorkoutHistory] = useState([]);
@@ -350,62 +34,13 @@ const WorkoutTracker = () => {
   const [showExerciseInfo, setShowExerciseInfo] = useState(null);
   const [workoutStartTime, setWorkoutStartTime] = useState(null);
   const [isGenerating, setIsGenerating] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // --- FIREBASE & DATA HANDLING ---
-  useEffect(() => {
-    if (!auth) {
-        setIsLoading(false);
-        console.error("Firebase is not initialized. Please check your configuration.");
-        return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        const userDocRef = doc(db, 'users', user.uid);
-        
-        const unsubSnapshot = onSnapshot(userDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setRoutine(data.routine || defaultRoutine);
-            setExerciseDatabase(data.exerciseDatabase || initialExerciseDatabase);
-            setWorkoutHistory(data.workoutHistory || []);
-            setCurrentDay(data.currentDay || 1);
-          } else {
-            const initialData = {
-              routine: defaultRoutine,
-              exerciseDatabase: initialExerciseDatabase,
-              workoutHistory: [],
-              currentDay: 1,
-            };
-            setDoc(userDocRef, initialData);
-          }
-          setIsLoading(false);
-        });
-        return () => unsubSnapshot();
-      } else {
-        signInAnonymously(auth).catch((error) => console.error("Anonymous sign-in failed:", error));
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
+  // --- MOCK FIREBASE FUNCTIONS (since we can't use real Firebase in artifacts) ---
   const saveDataToFirestore = useCallback(async (dataToSave) => {
-    if (!userId || !db) return;
-    const userDocRef = doc(db, 'users', userId);
-    try {
-      const fullData = {
-        routine,
-        exerciseDatabase,
-        workoutHistory,
-        currentDay,
-        ...dataToSave
-      };
-      await setDoc(userDocRef, fullData, { merge: true });
-    } catch (error) {
-      console.error("Error saving data to Firestore:", error);
-    }
-  }, [userId, routine, exerciseDatabase, workoutHistory, currentDay]);
+    // Mock function - in real app this would save to Firebase
+    console.log("Would save to Firestore:", dataToSave);
+  }, [userId]);
   
   // --- LIVE AI FUNCTION ---
   const fetchAiExerciseInfo = async (exerciseName) => {
@@ -473,6 +108,7 @@ const WorkoutTracker = () => {
           const newInfo = await fetchAiExerciseInfo(exerciseName);
           if (newInfo && newInfo.muscle !== "Error") {
             const newDb = { ...exerciseDatabase, [exerciseName]: newInfo };
+            setExerciseDatabase(newDb);
             await saveDataToFirestore({ exerciseDatabase: newDb });
           }
       } catch (error) {
@@ -526,9 +162,23 @@ const WorkoutTracker = () => {
     setCurrentView('workout');
   };
 
-  const updateSet = (exerciseId, setIndex, field, value) => {
-    setWorkoutData(prev => ({ ...prev, exercises: prev.exercises.map(exercise => exercise.id === exerciseId ? { ...exercise, sets: exercise.sets.map((set, index) => index === setIndex ? { ...set, [field]: value } : set ) } : exercise ) }));
-  };
+  const updateSet = useCallback((exerciseId, setIndex, field, value) => {
+    setWorkoutData(prev => {
+        const newExercises = prev.exercises.map(exercise => {
+            if (exercise.id === exerciseId) {
+                const newSets = exercise.sets.map((set, index) => {
+                    if (index === setIndex) {
+                        return { ...set, [field]: value };
+                    }
+                    return set;
+                });
+                return { ...exercise, sets: newSets };
+            }
+            return exercise;
+        });
+        return { ...prev, exercises: newExercises };
+    });
+  }, []);
 
   const finishWorkout = async () => {
     const duration = workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000 / 60) : 0;
@@ -538,6 +188,8 @@ const WorkoutTracker = () => {
     const dayJustCompleted = workoutData.dayNumber;
     const nextDay = dayJustCompleted >= Object.keys(routine).length ? 1 : dayJustCompleted + 1;
     
+    setWorkoutHistory(newHistory);
+    setCurrentDay(nextDay);
     await saveDataToFirestore({ workoutHistory: newHistory, currentDay: nextDay });
 
     setActiveWorkout(null);
@@ -555,10 +207,12 @@ const WorkoutTracker = () => {
 
   const deleteWorkout = (workoutId) => {
     const newHistory = workoutHistory.filter(workout => workout.id !== workoutId);
+    setWorkoutHistory(newHistory);
     saveDataToFirestore({ workoutHistory: newHistory });
   };
 
   const updateRoutine = (newRoutine) => {
+    setRoutine(newRoutine);
     saveDataToFirestore({ routine: newRoutine });
   };
 
@@ -582,6 +236,902 @@ const WorkoutTracker = () => {
     return { workouts: last4Weeks.length, sets: totalSets, avgDuration: Math.round(avgDuration) };
   };
 
+  // --- UI COMPONENTS ---
+  const ExerciseInfoModal = ({ exercise, onClose }) => {
+    if (!exercise) return null;
+    
+    const info = exerciseDatabase[exercise.name] || {
+      muscle: "Unknown",
+      difficulty: "N/A",
+      equipment: "N/A",
+      form: "No information available",
+      tips: "No tips available",
+      progression: "No progression info available",
+      mistakes: "No common mistakes listed"
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold text-white">{exercise.name}</h2>
+              <button onClick={onClose} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="bg-blue-600 px-3 py-1 rounded-full">{info.muscle}</span>
+                <span className="bg-green-600 px-3 py-1 rounded-full">{info.difficulty}</span>
+                <span className="bg-purple-600 px-3 py-1 rounded-full">{info.equipment}</span>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Proper Form</h3>
+                <p className="text-gray-300 leading-relaxed">{info.form}</p>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Tips</h3>
+                <p className="text-gray-300 leading-relaxed">{info.tips}</p>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Progression</h3>
+                <p className="text-gray-300 leading-relaxed">{info.progression}</p>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Common Mistakes</h3>
+                <p className="text-gray-300 leading-relaxed">{info.mistakes}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const MainView = ({ routine, currentDay, getVolumeStats, setCurrentView, startWorkout, setShowExerciseInfo, userId }) => {
+    const stats = getVolumeStats();
+    
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold">Workout Tracker</h1>
+              <p className="text-gray-400">Day {currentDay} • {routine[currentDay]?.name}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentView('editRoutine')}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <Edit3 size={20} />
+              </button>
+              <button
+                onClick={() => setCurrentView('analytics')}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <BarChart3 size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Calendar className="text-blue-400" size={24} />
+                <div>
+                  <p className="text-gray-400 text-sm">Last 4 Weeks</p>
+                  <p className="text-2xl font-bold">{stats.workouts} workouts</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Target className="text-green-400" size={24} />
+                <div>
+                  <p className="text-gray-400 text-sm">Total Sets</p>
+                  <p className="text-2xl font-bold">{stats.sets}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Clock className="text-purple-400" size={24} />
+                <div>
+                  <p className="text-gray-400 text-sm">Avg Duration</p>
+                  <p className="text-2xl font-bold">{stats.avgDuration}min</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Workout Days */}
+          <div className="bg-gray-800 rounded-lg p-6 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Workout Routine</h2>
+              <button
+                onClick={() => setCurrentView('editRoutine')}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Edit3 size={16} />
+                Edit Routine
+              </button>
+            </div>
+            
+            {/* Day Selection Tabs */}
+            <div className="flex gap-2 mb-6 overflow-x-auto">
+              {Object.entries(routine).map(([dayNum, day]) => (
+                <button
+                  key={dayNum}
+                  onClick={() => setCurrentDay(parseInt(dayNum))}
+                  className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                    currentDay === parseInt(dayNum)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Day {dayNum}
+                </button>
+              ))}
+            </div>
+
+            {/* Current Day Workout */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-lg font-medium">{routine[currentDay]?.name}</h3>
+                <button
+                  onClick={() => startWorkout(currentDay)}
+                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                >
+                  <Zap size={16} />
+                  Start Day {currentDay}
+                </button>
+              </div>
+              
+              <div className="space-y-2">
+                {routine[currentDay]?.exercises.map((exercise, index) => (
+                  <div key={exercise.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400 text-sm w-6">{index + 1}.</span>
+                      <div>
+                        <p className="font-medium">{exercise.name}</p>
+                        <p className="text-sm text-gray-400">
+                          {exercise.sets} sets × {exercise.targetReps} reps • {exercise.restTime}s rest
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowExerciseInfo(exercise)}
+                      className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    >
+                      <Info size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => setCurrentView('history')}
+              className="bg-gray-800 hover:bg-gray-700 p-4 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <Calendar className="text-blue-400" size={24} />
+              <div className="text-left">
+                <p className="font-medium">Workout History</p>
+                <p className="text-sm text-gray-400">{workoutHistory.length} completed</p>
+              </div>
+            </button>
+            <button
+              onClick={() => setCurrentView('analytics')}
+              className="bg-gray-800 hover:bg-gray-700 p-4 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <TrendingUp className="text-green-400" size={24} />
+              <div className="text-left">
+                <p className="font-medium">Progress Analytics</p>
+                <p className="text-sm text-gray-400">Track your gains</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {showExerciseInfo && (
+          <ExerciseInfoModal 
+            exercise={showExerciseInfo} 
+            onClose={() => setShowExerciseInfo(null)} 
+          />
+        )}
+      </div>
+    );
+  };
+
+  const ActiveWorkoutView = ({ activeWorkout, workoutData, updateSet, finishWorkout, cancelWorkout, setShowExerciseInfo, getExerciseHistory, getProgressionSuggestion }) => {
+    if (!workoutData.exercises) return null;
+
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-2xl font-bold">{workoutData.name}</h1>
+              <p className="text-gray-400">Day {workoutData.dayNumber}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={cancelWorkout}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={finishWorkout}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+              >
+                Finish
+              </button>
+            </div>
+          </div>
+
+          {/* Exercises */}
+          <div className="space-y-6">
+            {workoutData.exercises.map((exercise, exerciseIndex) => (
+              <div key={exercise.id} className="bg-gray-800 rounded-lg p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">{exercise.name}</h3>
+                    <p className="text-gray-400 text-sm">
+                      {exercise.sets} sets × {exercise.targetReps} reps • Rest {exercise.restTime}s
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowExerciseInfo(exercise)}
+                    className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    <Info size={16} />
+                  </button>
+                </div>
+
+                {/* Sets */}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-4 gap-2 text-sm font-medium text-gray-400 mb-2">
+                    <span>Set</span>
+                    <span>Weight</span>
+                    <span>Reps</span>
+                    <span>RPE</span>
+                  </div>
+                  {exercise.sets.map((set, setIndex) => (
+                    <div key={setIndex} className="grid grid-cols-4 gap-2">
+                      <div className="flex items-center justify-center bg-gray-700 rounded p-2">
+                        {setIndex + 1}
+                      </div>
+                      <input
+                        type="number"
+                        placeholder="lbs"
+                        value={set.weight}
+                        onChange={(e) => updateSet(exercise.id, setIndex, 'weight', e.target.value)}
+                        className="bg-gray-700 rounded p-2 text-center"
+                      />
+                      <input
+                        type="number"
+                        placeholder="reps"
+                        value={set.reps}
+                        onChange={(e) => updateSet(exercise.id, setIndex, 'reps', e.target.value)}
+                        className="bg-gray-700 rounded p-2 text-center"
+                      />
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1"
+                        max="10"
+                        placeholder="RPE"
+                        value={set.rpe}
+                        onChange={(e) => updateSet(exercise.id, setIndex, 'rpe', e.target.value)}
+                        className="bg-gray-700 rounded p-2 text-center"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Progress Suggestion */}
+                {(() => {
+                  const history = getExerciseHistory(exercise.name);
+                  if (history.length > 0) {
+                    const suggestion = getProgressionSuggestion(exercise.name, history);
+                    return (
+                      <div className="mt-4 p-3 bg-gray-700 rounded-lg">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Brain size={16} className="text-blue-400" />
+                          <span className="text-sm font-medium">AI Suggestion</span>
+                        </div>
+                        <p className="text-sm text-gray-300">{suggestion.message}</p>
+                        <p className={`text-sm ${suggestion.color || 'text-blue-400'}`}>{suggestion.suggestion}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {showExerciseInfo && (
+          <ExerciseInfoModal 
+            exercise={showExerciseInfo} 
+            onClose={() => setShowExerciseInfo(null)} 
+          />
+        )}
+      </div>
+    );
+  };
+
+  const HistoryView = ({ workoutHistory, setCurrentView, deleteWorkout, formatDate }) => {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Workout History</h1>
+            <button
+              onClick={() => setCurrentView('routine')}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            >
+              Back
+            </button>
+          </div>
+
+          {/* History List */}
+          <div className="space-y-4">
+            {workoutHistory.length === 0 ? (
+              <div className="text-center py-12">
+                <Calendar className="mx-auto mb-4 text-gray-600" size={48} />
+                <p className="text-gray-400">No workouts completed yet</p>
+                <p className="text-gray-500 text-sm">Start your first workout to see it here!</p>
+              </div>
+            ) : (
+              workoutHistory.map((workout) => (
+                <div key={workout.id} className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-semibold">{workout.name}</h3>
+                      <p className="text-gray-400 text-sm">
+                        {formatDate(workout.completedAt)} • {workout.duration || 0} minutes
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => deleteWorkout(workout.id)}
+                      className="p-2 text-red-400 hover:bg-red-900 rounded-lg transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {workout.exercises.map((exercise) => {
+                      const completedSets = exercise.sets.filter(set => set.weight && set.reps);
+                      if (completedSets.length === 0) return null;
+                      
+                      return (
+                        <div key={exercise.id} className="text-sm">
+                          <span className="text-gray-300">{exercise.name}: </span>
+                          {completedSets.map((set, index) => (
+                            <span key={index} className="text-gray-400">
+                              {set.weight}lbs × {set.reps}
+                              {set.rpe && ` (RPE ${set.rpe})`}
+                              {index < completedSets.length - 1 ? ', ' : ''}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const AnalyticsView = ({ setCurrentView }) => {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Analytics</h1>
+            <button
+              onClick={() => setCurrentView('routine')}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            >
+              Back
+            </button>
+          </div>
+
+          {/* Analytics Content */}
+          <div className="space-y-6">
+            {workoutHistory.length === 0 ? (
+              <div className="text-center py-12">
+                <BarChart3 className="mx-auto mb-4 text-gray-600" size={48} />
+                <p className="text-gray-400">No data to analyze yet</p>
+                <p className="text-gray-500 text-sm">Complete some workouts to see your progress!</p>
+              </div>
+            ) : (
+              <>
+                {/* Basic Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="text-blue-400" size={24} />
+                      <div>
+                        <p className="text-gray-400 text-sm">Total Workouts</p>
+                        <p className="text-2xl font-bold">{workoutHistory.length}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Target className="text-green-400" size={24} />
+                      <div>
+                        <p className="text-gray-400 text-sm">Total Sets</p>
+                        <p className="text-2xl font-bold">
+                          {workoutHistory.reduce((sum, workout) => 
+                            sum + workout.exercises.reduce((exerciseSum, exercise) => 
+                              exerciseSum + exercise.sets.filter(set => set.weight && set.reps).length, 0), 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Clock className="text-purple-400" size={24} />
+                      <div>
+                        <p className="text-gray-400 text-sm">Total Time</p>
+                        <p className="text-2xl font-bold">
+                          {Math.round(workoutHistory.reduce((sum, w) => sum + (w.duration || 0), 0) / 60)}h
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <TrendingUp className="text-yellow-400" size={24} />
+                      <div>
+                        <p className="text-gray-400 text-sm">Avg Duration</p>
+                        <p className="text-2xl font-bold">
+                          {workoutHistory.length > 0 ? Math.round(workoutHistory.reduce((sum, w) => sum + (w.duration || 0), 0) / workoutHistory.length) : 0}min
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Activity */}
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
+                  <div className="space-y-3">
+                    {workoutHistory.slice(0, 5).map((workout) => (
+                      <div key={workout.id} className="flex justify-between items-center p-3 bg-gray-700 rounded-lg">
+                        <div>
+                          <p className="font-medium">{workout.name}</p>
+                          <p className="text-sm text-gray-400">{formatDate(workout.completedAt)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-400">{workout.duration || 0} min</p>
+                          <p className="text-sm text-green-400">
+                            {workout.exercises.reduce((sum, ex) => 
+                              sum + ex.sets.filter(set => set.weight && set.reps).length, 0)} sets
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const RoutineEditorView = ({ routine, exerciseDatabase, isGenerating, setCurrentView, updateRoutine, generateExerciseInfo }) => {
+    const [editingRoutine, setEditingRoutine] = useState(routine);
+    const [selectedDay, setSelectedDay] = useState(1);
+    const [showExerciseDB, setShowExerciseDB] = useState(false);
+    const [showAddExercise, setShowAddExercise] = useState(false);
+    const [newExerciseName, setNewExerciseName] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [localExerciseDB, setLocalExerciseDB] = useState(exerciseDatabase);
+
+    // Update local database when prop changes
+    useEffect(() => {
+      setLocalExerciseDB(exerciseDatabase);
+    }, [exerciseDatabase]);
+
+    const saveRoutine = () => {
+      updateRoutine(editingRoutine);
+      setCurrentView('routine');
+    };
+
+    const addExerciseToDay = (exercise) => {
+      const newExercise = {
+        id: Date.now(),
+        name: exercise,
+        sets: 3,
+        targetReps: "8-10",
+        restTime: 120
+      };
+      
+      setEditingRoutine(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          exercises: [...prev[selectedDay].exercises, newExercise]
+        }
+      }));
+      setShowExerciseDB(false);
+    };
+
+    const removeExerciseFromDay = (exerciseId) => {
+      setEditingRoutine(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          exercises: prev[selectedDay].exercises.filter(ex => ex.id !== exerciseId)
+        }
+      }));
+    };
+
+    const updateExercise = (exerciseId, field, value) => {
+      setEditingRoutine(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          exercises: prev[selectedDay].exercises.map(ex => 
+            ex.id === exerciseId ? { ...ex, [field]: value } : ex
+          )
+        }
+      }));
+    };
+
+    const updateDayName = (name) => {
+      setEditingRoutine(prev => ({
+        ...prev,
+        [selectedDay]: { ...prev[selectedDay], name }
+      }));
+    };
+
+    const addNewExerciseToDatabase = async () => {
+      if (!newExerciseName.trim()) return;
+      
+      const exerciseName = newExerciseName.trim();
+      
+      // Add a placeholder to the local database immediately so it shows up
+      const placeholder = {
+        muscle: "Loading...",
+        difficulty: "N/A",
+        equipment: "N/A",
+        form: "Generating exercise information...",
+        tips: "Please wait while AI generates tips...",
+        progression: "Progression info will be available shortly...",
+        mistakes: "Common mistakes will be loaded soon..."
+      };
+      
+      // Update local state immediately
+      setLocalExerciseDB(prev => ({ ...prev, [exerciseName]: placeholder }));
+      
+      // Generate AI info in the background
+      await generateExerciseInfo(exerciseName);
+      
+      setNewExerciseName('');
+      setShowAddExercise(false);
+    };
+
+    const filteredExercises = Object.keys(localExerciseDB).filter(exercise =>
+      exercise.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Edit Routine</h1>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowExerciseDB(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Add Exercise
+              </button>
+              <button
+                onClick={saveRoutine}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Save size={16} />
+                Save
+              </button>
+              <button
+                onClick={() => setCurrentView('routine')}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+
+          {/* Day Selection */}
+          <div className="flex gap-2 mb-6 overflow-x-auto">
+            {Object.entries(editingRoutine).map(([dayNum, day]) => (
+              <button
+                key={dayNum}
+                onClick={() => setSelectedDay(parseInt(dayNum))}
+                className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                  selectedDay === parseInt(dayNum)
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Day {dayNum}
+              </button>
+            ))}
+          </div>
+
+          {/* Day Name Editor */}
+          <div className="bg-gray-800 rounded-lg p-6 mb-6">
+            <label className="block text-sm font-medium mb-2">Day Name</label>
+            <input
+              type="text"
+              value={editingRoutine[selectedDay]?.name || ''}
+              onChange={(e) => updateDayName(e.target.value)}
+              className="w-full bg-gray-700 rounded-lg p-3 text-white"
+              placeholder="Enter day name (e.g., Push Day, Pull Day)"
+            />
+          </div>
+
+          {/* Exercises Editor */}
+          <div className="bg-gray-800 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Exercises</h3>
+              <button
+                onClick={() => setShowExerciseDB(true)}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+              >
+                + Add Exercise
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {editingRoutine[selectedDay]?.exercises.map((exercise, index) => (
+                <div key={exercise.id} className="bg-gray-700 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h4 className="font-medium mb-2">{exercise.name}</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Sets</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={exercise.sets}
+                            onChange={(e) => updateExercise(exercise.id, 'sets', parseInt(e.target.value))}
+                            className="w-full bg-gray-600 rounded p-2 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Target Reps</label>
+                          <input
+                            type="text"
+                            value={exercise.targetReps}
+                            onChange={(e) => updateExercise(exercise.id, 'targetReps', e.target.value)}
+                            className="w-full bg-gray-600 rounded p-2 text-sm"
+                            placeholder="e.g., 8-10"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Rest Time (s)</label>
+                          <input
+                            type="number"
+                            min="30"
+                            step="15"
+                            value={exercise.restTime}
+                            onChange={(e) => updateExercise(exercise.id, 'restTime', parseInt(e.target.value))}
+                            className="w-full bg-gray-600 rounded p-2 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeExerciseFromDay(exercise.id)}
+                      className="ml-3 p-2 text-red-400 hover:bg-red-900 rounded transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Exercise Database Modal */}
+        {showExerciseDB && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-hidden">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Exercise Database</h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowAddExercise(true)}
+                      className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm transition-colors"
+                    >
+                      Add New Exercise
+                    </button>
+                    <button 
+                      onClick={() => setShowExerciseDB(false)}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search */}
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search exercises..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-gray-700 rounded-lg p-3 text-white"
+                  />
+                </div>
+
+                {/* Exercise List */}
+                <div className="max-h-96 overflow-y-auto space-y-2">
+                  {filteredExercises.map((exerciseName) => {
+                    const info = localExerciseDB[exerciseName];
+                    return (
+                      <div key={exerciseName} className="bg-gray-700 rounded-lg p-4 flex justify-between items-center">
+                        <div>
+                          <h3 className="font-medium">{exerciseName}</h3>
+                          <div className="flex gap-2 mt-1">
+                            <span className="text-xs bg-blue-600 px-2 py-1 rounded">{info.muscle}</span>
+                            <span className="text-xs bg-green-600 px-2 py-1 rounded">{info.difficulty}</span>
+                            <span className="text-xs bg-purple-600 px-2 py-1 rounded">{info.equipment}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {isGenerating[exerciseName] ? (
+                            <Loader className="animate-spin" size={16} />
+                          ) : (
+                            <button
+                              onClick={() => generateExerciseInfo(exerciseName)}
+                              className="p-2 text-blue-400 hover:bg-blue-900 rounded transition-colors"
+                              title="Regenerate AI info"
+                            >
+                              <Brain size={16} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => addExerciseToDay(exerciseName)}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add New Exercise Modal */}
+        {showAddExercise && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 rounded-lg max-w-md w-full">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Add New Exercise</h2>
+                  <button 
+                    onClick={() => setShowAddExercise(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Exercise Name</label>
+                    <input
+                      type="text"
+                      value={newExerciseName}
+                      onChange={(e) => setNewExerciseName(e.target.value)}
+                      className="w-full bg-gray-700 rounded-lg p-3 text-white"
+                      placeholder="Enter exercise name"
+                      onKeyPress={(e) => e.key === 'Enter' && addNewExerciseToDatabase()}
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addNewExerciseToDatabase}
+                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                      disabled={!newExerciseName.trim()}
+                    >
+                      Add Exercise
+                    </button>
+                    <button
+                      onClick={() => setShowAddExercise(false)}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-3 bg-blue-900 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Brain size={16} className="text-blue-400" />
+                    <span className="text-sm font-medium">AI Enhancement</span>
+                  </div>
+                  <p className="text-xs text-blue-200">
+                    Exercise form, tips, and progression will be automatically generated using AI
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };<div className="mt-4 p-3 bg-blue-900 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Brain size={16} className="text-blue-400" />
+                    <span className="text-sm font-medium">AI Enhancement</span>
+                  </div>
+                  <p className="text-xs text-blue-200">
+                    Exercise form, tips, and progression will be automatically generated using AI
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // --- MEMOIZED COMPONENTS ---
+  const MemoizedExerciseInfoModal = memo(ExerciseInfoModal);
+  const MemoizedRoutineEditorView = memo(RoutineEditorView);
+  const MemoizedMainView = memo(MainView);
+  const MemoizedActiveWorkoutView = memo(ActiveWorkoutView);
+  const MemoizedHistoryView = memo(HistoryView);
+  const MemoizedAnalyticsView = memo(AnalyticsView);
+
   // --- VIEW ROUTER ---
   if (isLoading) {
     return (
@@ -593,17 +1143,17 @@ const WorkoutTracker = () => {
 
   switch (currentView) {
     case 'routine':
-      return <MainView routine={routine} currentDay={currentDay} getVolumeStats={getVolumeStats} setCurrentView={setCurrentView} startWorkout={startWorkout} setShowExerciseInfo={setShowExerciseInfo} userId={userId} />;
+      return <MemoizedMainView routine={routine} currentDay={currentDay} getVolumeStats={getVolumeStats} setCurrentView={setCurrentView} startWorkout={startWorkout} setShowExerciseInfo={setShowExerciseInfo} userId={userId} />;
     case 'editRoutine':
-      return <RoutineEditorView routine={routine} exerciseDatabase={exerciseDatabase} isGenerating={isGenerating} setCurrentView={setCurrentView} updateRoutine={updateRoutine} generateExerciseInfo={generateExerciseInfo} />;
+      return <MemoizedRoutineEditorView routine={routine} exerciseDatabase={exerciseDatabase} isGenerating={isGenerating} setCurrentView={setCurrentView} updateRoutine={updateRoutine} generateExerciseInfo={generateExerciseInfo} />;
     case 'workout':
-      return activeWorkout ? <ActiveWorkoutView activeWorkout={activeWorkout} workoutData={workoutData} updateSet={updateSet} finishWorkout={finishWorkout} cancelWorkout={cancelWorkout} setShowExerciseInfo={setShowExerciseInfo} getExerciseHistory={getExerciseHistory} getProgressionSuggestion={getProgressionSuggestion} /> : <MainView />;
+      return activeWorkout ? <MemoizedActiveWorkoutView activeWorkout={activeWorkout} workoutData={workoutData} updateSet={updateSet} finishWorkout={finishWorkout} cancelWorkout={cancelWorkout} setShowExerciseInfo={(ex) => setShowExerciseInfo(ex)} getExerciseHistory={getExerciseHistory} getProgressionSuggestion={getProgressionSuggestion} /> : <MemoizedMainView routine={routine} currentDay={currentDay} getVolumeStats={getVolumeStats} setCurrentView={setCurrentView} startWorkout={startWorkout} setShowExerciseInfo={setShowExerciseInfo} userId={userId} />;
     case 'history':
-      return <HistoryView workoutHistory={workoutHistory} setCurrentView={setCurrentView} deleteWorkout={deleteWorkout} formatDate={formatDate} />;
+      return <MemoizedHistoryView workoutHistory={workoutHistory} setCurrentView={setCurrentView} deleteWorkout={deleteWorkout} formatDate={formatDate} />;
     case 'analytics':
-      return <AnalyticsView setCurrentView={setCurrentView} />;
+      return <MemoizedAnalyticsView setCurrentView={setCurrentView} />;
     default:
-      return <MainView routine={routine} currentDay={currentDay} getVolumeStats={getVolumeStats} setCurrentView={setCurrentView} startWorkout={startWorkout} setShowExerciseInfo={setShowExerciseInfo} userId={userId} />;
+      return <MemoizedMainView routine={routine} currentDay={currentDay} getVolumeStats={getVolumeStats} setCurrentView={setCurrentView} startWorkout={startWorkout} setShowExerciseInfo={setShowExerciseInfo} userId={userId} />;
   }
 };
 
