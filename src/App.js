@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Calendar, Plus, Trash2, Info, Edit3, Save, X, BarChart3, Brain, Zap, Loader, Clock, Target, TrendingUp, User, Copy, Sparkles, Settings, List, Dumbbell, LogOut } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, writeBatch, query } from 'firebase/firestore';
 
 // --- INITIAL STATE & DEFAULTS ---
@@ -60,14 +60,14 @@ const App = () => {
     // --- FIREBASE INITIALIZATION & AUTH ---
     useEffect(() => {
         try {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-            
-            if (!firebaseConfig.apiKey) {
-                console.error("Firebase config is missing.");
-                setIsLoading(false);
-                return;
+            const firebaseConfigStr = process.env.REACT_APP_FIREBASE_CONFIG;
+            if (!firebaseConfigStr) {
+                 console.error("Firebase config is missing from environment variables.");
+                 setIsLoading(false);
+                 setError("Application is not configured correctly.");
+                 return;
             }
+            const firebaseConfig = JSON.parse(firebaseConfigStr);
 
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
@@ -95,9 +95,9 @@ const App = () => {
             setIsLoading(false);
             return;
         }
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         
+        const appId = db.app.options.appId;
+
         const publicExercisesCollectionRef = collection(db, "artifacts", appId, "public", "data", "exercises");
         const unsubscribePublic = onSnapshot(query(publicExercisesCollectionRef), (snapshot) => {
             const exercises = {};
@@ -177,7 +177,7 @@ const App = () => {
     // --- DATA SAVING ---
     const saveDataToFirestore = useCallback(async (dataToSave) => {
         if (!db || !user) return;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const appId = db.app.options.appId;
         const userDocRef = doc(db, "artifacts", appId, "users", user.uid, "workoutData", "data");
         try {
             const sanitizedData = {};
@@ -194,7 +194,7 @@ const App = () => {
     
     const saveExerciseToPublicDB = useCallback(async (exerciseName, exerciseData) => {
         if (!db) return;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const appId = db.app.options.appId;
         const exerciseDocRef = doc(db, "artifacts", appId, "public", "data", "exercises", exerciseName);
         try {
             await setDoc(exerciseDocRef, exerciseData, { merge: true });
