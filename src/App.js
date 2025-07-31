@@ -2,7 +2,7 @@
 import { Calendar, Plus, Trash2, Info, Edit3, Save, X, BarChart3, Brain, Zap, Loader, Clock, Target, TrendingUp, User, Copy, Sparkles, Settings, List, Dumbbell, LogOut } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, writeBatch, query } from 'firebase/firestore';
+import { getDatabase, ref, onValue, set, update } from 'firebase/database';
 
 // --- INITIAL STATE & DEFAULTS ---
 const newDefaultRoutine = {
@@ -71,7 +71,7 @@ const App = () => {
 
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
-            const dbInstance = getFirestore(app);
+            const dbInstance = getDatabase(app); // Use getDatabase for Realtime Database
             setDb(dbInstance);
             setAuth(authInstance);
 
@@ -96,54 +96,47 @@ const App = () => {
             return;
         }
         
-        const appId = db.app.options.appId;
+        const appId = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG).appId;
 
-        const publicExercisesCollectionRef = collection(db, "artifacts", appId, "public", "data", "exercises");
-        const unsubscribePublic = onSnapshot(query(publicExercisesCollectionRef), (snapshot) => {
-            const exercises = {};
-            if (snapshot.empty) {
-                const batch = writeBatch(db);
-                Object.entries(initialExerciseDatabase).forEach(([name, data]) => {
-                    const docRef = doc(publicExercisesCollectionRef, name);
-                    batch.set(docRef, data);
-                    exercises[name] = data;
-                });
-                batch.commit();
+        const publicExercisesRef = ref(db, `artifacts/${appId}/public/exercises`);
+        const unsubscribePublic = onValue(publicExercisesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                setExerciseDatabase(data);
             } else {
-                snapshot.forEach(doc => { exercises[doc.id] = doc.data(); });
+                set(publicExercisesRef, initialExerciseDatabase); // Seed database if empty
+                setExerciseDatabase(initialExerciseDatabase);
             }
-            setExerciseDatabase(exercises);
         }, (err) => {
             console.error("Error fetching public exercises:", err);
             setError("Could not load exercise database.");
             setExerciseDatabase(initialExerciseDatabase);
         });
 
-        const userDocRef = doc(db, "artifacts", appId, "users", user.uid, "workoutData", "data");
-        const unsubscribePrivate = onSnapshot(userDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const parsedProfile = data.profile ? JSON.parse(data.profile) : {};
-                
-                if (!parsedProfile.name) setCurrentView('profileSetup');
+        const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
+        const unsubscribePrivate = onValue(userRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                if (!data.profile || !data.profile.name) {
+                    setCurrentView('profileSetup');
+                }
                 
                 try {
-                    setUserProfile({ ...defaultProfile, ...parsedProfile });
+                    setUserProfile({ ...defaultProfile, ...(data.profile || {}) });
                     
                     if (data.routines) {
-                        const routinesData = JSON.parse(data.routines);
-                        setRoutines(routinesData.allRoutines);
-                        setActiveRoutineId(routinesData.activeRoutineId);
+                        setRoutines(data.routines.allRoutines);
+                        setActiveRoutineId(data.routines.activeRoutineId);
                     } else {
                          const newRoutinesData = { activeRoutineId: newDefaultRoutine.id, allRoutines: { [newDefaultRoutine.id]: newDefaultRoutine } };
                          setRoutines(newRoutinesData.allRoutines);
                          setActiveRoutineId(newRoutinesData.activeRoutineId);
                     }
 
-                    setWorkoutHistory(data.history ? JSON.parse(data.history) : []);
+                    setWorkoutHistory(data.history || []);
                     setCurrentDay(data.currentDay || 1);
                 } catch (e) {
-                    console.error("Error parsing user data from Firestore:", e);
+                    console.error("Error parsing user data from DB:", e);
                     setError("There was an issue loading your saved data.");
                 }
             } else {
@@ -154,10 +147,10 @@ const App = () => {
                 setActiveRoutineId(newRoutinesData.activeRoutineId);
                 setWorkoutHistory([]);
                 setCurrentDay(1);
-                setDoc(userDocRef, { 
-                    profile: JSON.stringify(defaultProfile),
-                    routines: JSON.stringify(newRoutinesData),
-                    history: JSON.stringify([]),
+                set(userRef, { 
+                    profile: defaultProfile,
+                    routines: newRoutinesData,
+                    history: [],
                     currentDay: 1
                 });
             }
@@ -177,27 +170,27 @@ const App = () => {
     // --- DATA SAVING ---
     const saveDataToFirestore = useCallback(async (dataToSave) => {
         if (!db || !user) return;
-        const appId = db.app.options.appId;
-        const userDocRef = doc(db, "artifacts", appId, "users", user.uid, "workoutData", "data");
+        const appId = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG).appId;
+        const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
         try {
-            const sanitizedData = {};
-            if (dataToSave.profile) sanitizedData.profile = JSON.stringify(dataToSave.profile);
-            if (dataToSave.routines) sanitizedData.routines = JSON.stringify({ activeRoutineId, allRoutines: routines, ...dataToSave.routines });
-            if (dataToSave.workoutHistory) sanitizedData.history = JSON.stringify(dataToSave.workoutHistory);
-            if (dataToSave.currentDay) sanitizedData.currentDay = dataToSave.currentDay;
-            await setDoc(userDocRef, sanitizedData, { merge: true });
+            const updates = {};
+            if (dataToSave.profile) updates['profile'] = dataToSave.profile;
+            if (dataToSave.routines) updates['routines'] = { activeRoutineId, allRoutines: routines, ...dataToSave.routines };
+            if (dataToSave.workoutHistory) updates['history'] = dataToSave.workoutHistory;
+            if (dataToSave.currentDay) updates['currentDay'] = dataToSave.currentDay;
+            await update(userRef, updates);
         } catch (e) {
-            console.error("Error saving data to Firestore:", e);
+            console.error("Error saving data to Realtime DB:", e);
             setError("Could not save your changes.");
         }
     }, [db, user, routines, activeRoutineId]);
     
     const saveExerciseToPublicDB = useCallback(async (exerciseName, exerciseData) => {
         if (!db) return;
-        const appId = db.app.options.appId;
-        const exerciseDocRef = doc(db, "artifacts", appId, "public", "data", "exercises", exerciseName);
+        const appId = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG).appId;
+        const exerciseRef = ref(db, `artifacts/${appId}/public/exercises/${exerciseName}`);
         try {
-            await setDoc(exerciseDocRef, exerciseData, { merge: true });
+            await set(exerciseRef, exerciseData);
         } catch(e) {
             console.error("Error saving exercise to public DB:", e);
             setError("Could not save new exercise.");
