@@ -8,7 +8,7 @@ import { getDatabase, ref, onValue, set, update } from 'firebase/database';
 
 // This is the detailed routine for the primary user (you).
 const adminRoutine = {
-  id: `routine_admin_${Date.now()}`,
+  id: `routine_admin_1`, // Static ID for consistency
   name: "Bodybuilding Split",
   days: {
     1: { name: "Push (Chest + Shoulders + Triceps)", exercises: [ { id: 1, name: "Flat Dumbbell Bench Press", sets: 4, targetReps: "2x 6-8, 2x 10-12", restTime: 120 }, { id: 2, name: "Incline Barbell Press", sets: 4, targetReps: "8-10", restTime: 120 }, { id: 3, name: "Smith Machine Incline Press", sets: 3, targetReps: "10-12 (slow negatives)", restTime: 90 }, { id: 4, name: "Cable Fly (High to Low)", sets: 3, targetReps: "12-15 (2s squeeze)", restTime: 60 }, { id: 5, name: "Overhead Rope Tricep Extension", sets: 3, targetReps: "10-12", restTime: 60 }, { id: 6, name: "V-Bar Pushdown", sets: 3, targetReps: "10-12 + drop set", restTime: 60 }, { id: 7, name: "Dumbbell Lateral Raise", sets: 4, targetReps: "12-15", restTime: 60 }, { id: 8, name: "Face Pull", sets: 3, targetReps: "12-15", restTime: 60 } ] },
@@ -23,7 +23,7 @@ const adminRoutine = {
 
 // This is the blank slate for all new users.
 const blankRoutineForNewUsers = {
-  id: `routine_blank_${Date.now()}`,
+  id: `routine_blank_1`, // Static ID for consistency
   name: "My First Routine",
   days: {
     1: { name: "New Day", exercises: [] }
@@ -114,7 +114,7 @@ const App = () => {
         }
 
         const appId = "my-workout-tracker-app-d8d61";
-        const adminUserId = "dTF8r04xSUVzpGxtnJqaxx2eQ6I3"; // Your specific User ID
+        const adminUserId = "dTF8r04xSUVzpGxtnJqaxx2eQ6I3";
         
         const publicExercisesRef = ref(db, `artifacts/${appId}/public/data/exercises`);
         const unsubscribePublic = onValue(publicExercisesRef, (snapshot) => {
@@ -142,7 +142,16 @@ const App = () => {
                 try {
                     setUserProfile({ ...defaultProfile, ...data.profile });
                     
-                    if (data.routines) {
+                    // ONE-TIME MIGRATION FOR ADMIN USER
+                    if (user.uid === adminUserId && (!data.routines || !data.routines.allRoutines[adminRoutine.id])) {
+                        const newRoutinesData = {
+                            activeRoutineId: adminRoutine.id,
+                            allRoutines: { ...data.routines?.allRoutines, [adminRoutine.id]: adminRoutine }
+                        };
+                        setRoutines(newRoutinesData.allRoutines);
+                        setActiveRoutineId(newRoutinesData.activeRoutineId);
+                        saveDataToRTDB({ routines: newRoutinesData });
+                    } else if (data.routines) {
                         setRoutines(data.routines.allRoutines);
                         setActiveRoutineId(data.routines.activeRoutineId);
                     } else {
