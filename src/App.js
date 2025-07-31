@@ -24,6 +24,7 @@ const initialExerciseDatabase = {
 const defaultProfile = {
     name: '', age: '', gender: 'Prefer not to say', weight: '',
     goal: 'Bodybuilding', experience: 'Intermediate', daysPerWeek: 7,
+    setupComplete: false
 };
 
 const App = () => {
@@ -60,18 +61,19 @@ const App = () => {
     // --- FIREBASE INITIALIZATION & AUTH ---
     useEffect(() => {
         try {
-            const firebaseConfigStr = process.env.REACT_APP_FIREBASE_CONFIG;
-            if (!firebaseConfigStr) {
-                 console.error("Firebase config is missing from environment variables.");
-                 setIsLoading(false);
-                 setError("Application is not configured correctly.");
-                 return;
-            }
-            const firebaseConfig = JSON.parse(firebaseConfigStr);
-
+            const firebaseConfig = {
+              apiKey: "AIzaSyDM3i689ESBlBx2pEEy05MZ5c3IY3PQp3w",
+              authDomain: "my-workout-tracker-app-d8d61.firebaseapp.com",
+              databaseURL: "https://my-workout-tracker-app-d8d61-default-rtdb.firebaseio.com",
+              projectId: "my-workout-tracker-app-d8d61",
+              storageBucket: "my-workout-tracker-app-d8d61.appspot.com",
+              messagingSenderId: "321079278500",
+              appId: "1:321079278500:web:587525f6cea6829745df31"
+            };
+            
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
-            const dbInstance = getDatabase(app); // Use getDatabase for Realtime Database
+            const dbInstance = getDatabase(app);
             setDb(dbInstance);
             setAuth(authInstance);
 
@@ -95,17 +97,21 @@ const App = () => {
             setIsLoading(false);
             return;
         }
-        
-        const appId = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG).appId;
 
-        const publicExercisesRef = ref(db, `artifacts/${appId}/public/exercises`);
+        const appId = "my-workout-tracker-app-d8d61";
+        
+        const publicExercisesRef = ref(db, `artifacts/${appId}/public/data/exercises`);
         const unsubscribePublic = onValue(publicExercisesRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 setExerciseDatabase(data);
             } else {
-                set(publicExercisesRef, initialExerciseDatabase); // Seed database if empty
-                setExerciseDatabase(initialExerciseDatabase);
+                const initialData = {};
+                Object.entries(initialExerciseDatabase).forEach(([name, exerciseData]) => {
+                    initialData[name] = exerciseData;
+                });
+                set(ref(db, `artifacts/${appId}/public/data/exercises`), initialData);
+                setExerciseDatabase(initialData);
             }
         }, (err) => {
             console.error("Error fetching public exercises:", err);
@@ -116,13 +122,9 @@ const App = () => {
         const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
         const unsubscribePrivate = onValue(userRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
-                if (!data.profile || !data.profile.name) {
-                    setCurrentView('profileSetup');
-                }
-                
+            if (data && data.profile && data.profile.setupComplete) {
                 try {
-                    setUserProfile({ ...defaultProfile, ...(data.profile || {}) });
+                    setUserProfile({ ...defaultProfile, ...data.profile });
                     
                     if (data.routines) {
                         setRoutines(data.routines.allRoutines);
@@ -136,7 +138,7 @@ const App = () => {
                     setWorkoutHistory(data.history || []);
                     setCurrentDay(data.currentDay || 1);
                 } catch (e) {
-                    console.error("Error parsing user data from DB:", e);
+                    console.error("Error parsing user data:", e);
                     setError("There was an issue loading your saved data.");
                 }
             } else {
@@ -147,12 +149,6 @@ const App = () => {
                 setActiveRoutineId(newRoutinesData.activeRoutineId);
                 setWorkoutHistory([]);
                 setCurrentDay(1);
-                set(userRef, { 
-                    profile: defaultProfile,
-                    routines: newRoutinesData,
-                    history: [],
-                    currentDay: 1
-                });
             }
             setIsLoading(false);
         }, (err) => {
@@ -168,27 +164,22 @@ const App = () => {
     }, [isAuthReady, db, user]);
 
     // --- DATA SAVING ---
-    const saveDataToFirestore = useCallback(async (dataToSave) => {
+    const saveDataToRTDB = useCallback(async (dataToSave) => {
         if (!db || !user) return;
-        const appId = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG).appId;
+        const appId = "my-workout-tracker-app-d8d61";
         const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
         try {
-            const updates = {};
-            if (dataToSave.profile) updates['profile'] = dataToSave.profile;
-            if (dataToSave.routines) updates['routines'] = { activeRoutineId, allRoutines: routines, ...dataToSave.routines };
-            if (dataToSave.workoutHistory) updates['history'] = dataToSave.workoutHistory;
-            if (dataToSave.currentDay) updates['currentDay'] = dataToSave.currentDay;
-            await update(userRef, updates);
+            await update(userRef, dataToSave);
         } catch (e) {
-            console.error("Error saving data to Realtime DB:", e);
+            console.error("Error saving data to RTDB:", e);
             setError("Could not save your changes.");
         }
-    }, [db, user, routines, activeRoutineId]);
+    }, [db, user]);
     
     const saveExerciseToPublicDB = useCallback(async (exerciseName, exerciseData) => {
         if (!db) return;
-        const appId = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG).appId;
-        const exerciseRef = ref(db, `artifacts/${appId}/public/exercises/${exerciseName}`);
+        const appId = "my-workout-tracker-app-d8d61";
+        const exerciseRef = ref(db, `artifacts/${appId}/public/data/exercises/${exerciseName}`);
         try {
             await set(exerciseRef, exerciseData);
         } catch(e) {
@@ -205,7 +196,7 @@ const App = () => {
 
     // --- AI & EXERCISE INFO ---
     const callGeminiAPI = async (prompt) => {
-        const apiKey = ""; // Leave empty, handled by environment
+        const apiKey = "AIzaSyDM3i689ESBlBx2pEEy05MZ5c3IY3PQp3w";
         const model = "gemini-2.5-flash-preview-05-20";
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         
@@ -353,12 +344,12 @@ const App = () => {
         const newHistory = [completedWorkout, ...workoutHistory];
         const dayJustCompleted = workoutData.dayNumber;
         const nextDay = dayJustCompleted >= Object.keys(activeRoutine.days).length ? 1 : dayJustCompleted + 1;
-        await saveDataToFirestore({ workoutHistory: newHistory, currentDay: nextDay });
+        await saveDataToRTDB({ history: newHistory, currentDay: nextDay });
         setActiveWorkout(null);
         setWorkoutData({});
         setWorkoutStartTime(null);
         setCurrentView('routine');
-    }, [workoutData, workoutHistory, workoutStartTime, activeRoutine, saveDataToFirestore]);
+    }, [workoutData, workoutHistory, workoutStartTime, activeRoutine, saveDataToRTDB]);
 
     const cancelWorkout = useCallback(() => {
         setActiveWorkout(null);
@@ -369,8 +360,8 @@ const App = () => {
 
     const deleteWorkout = useCallback(async (workoutId) => {
         const newHistory = workoutHistory.filter(workout => workout.id !== workoutId);
-        await saveDataToFirestore({ workoutHistory: newHistory });
-    }, [workoutHistory, saveDataToFirestore]);
+        await saveDataToRTDB({ history: newHistory });
+    }, [workoutHistory, saveDataToRTDB]);
 
     const updateRoutines = useCallback(async (newRoutines, newActiveId) => {
         const updatedRoutines = {
@@ -379,13 +370,14 @@ const App = () => {
         };
         setRoutines(updatedRoutines.allRoutines);
         setActiveRoutineId(updatedRoutines.activeRoutineId);
-        await saveDataToFirestore({ routines: updatedRoutines });
-    }, [routines, activeRoutineId, saveDataToFirestore]);
+        await saveDataToRTDB({ routines: updatedRoutines });
+    }, [routines, activeRoutineId, saveDataToRTDB]);
 
     const updateUserProfile = useCallback(async (newProfile) => {
-        setUserProfile(newProfile);
-        await saveDataToFirestore({ profile: newProfile });
-    }, [saveDataToFirestore]);
+        const profileToSave = {...newProfile, setupComplete: true};
+        setUserProfile(profileToSave);
+        await saveDataToRTDB({ profile: profileToSave });
+    }, [saveDataToRTDB]);
 
     const formatDate = useCallback((dateString) => {
         if (!dateString) return 'N/A';
@@ -485,7 +477,7 @@ const App = () => {
 
     const MainView = () => (
       <div className="min-h-screen bg-gray-900 text-white font-sans relative">
-        <div className="container mx-auto p-4 sm:p-6">
+        <div className="container mx-auto p-4 sm:p-6 pt-20">
           {error && <div className="mb-4 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg flex justify-between items-center"><p className="text-red-200">{error}</p><button onClick={() => setError(null)} className="text-red-300 hover:text-red-100"><X size={20} /></button></div>}
           <div className="flex justify-between items-center mb-8">
             <div><h1 className="text-3xl font-bold">{activeRoutine.name}</h1><p className="text-gray-400">Next: Day {currentDay} • {activeRoutine.days[currentDay]?.name}</p></div>
@@ -521,7 +513,7 @@ const App = () => {
         if (!workoutData.exercises) return <MainView />;
         return (
           <div className="min-h-screen bg-gray-900 text-white font-sans">
-            <div className="container mx-auto p-4 sm:p-6">
+            <div className="container mx-auto p-4 sm:p-6 pt-20">
               <div className="flex justify-between items-center mb-6">
                 <div><h1 className="text-2xl font-bold">{workoutData.name}</h1><p className="text-gray-400">Day {workoutData.dayNumber}</p></div>
                 <div className="flex gap-2"><button onClick={cancelWorkout} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Cancel</button><button onClick={finishWorkout} className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors font-bold">Finish</button></div>
@@ -535,7 +527,7 @@ const App = () => {
 
     const HistoryView = () => (
       <div className="min-h-screen bg-gray-900 text-white font-sans">
-        <div className="container mx-auto p-4 sm:p-6">
+        <div className="container mx-auto p-4 sm:p-6 pt-20">
           <div className="flex justify-between items-center mb-6"><h1 className="text-2xl font-bold">Workout History</h1><button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Back</button></div>
           <div className="space-y-4">{workoutHistory.length === 0 ? (<div className="text-center py-12 bg-gray-800 rounded-lg"><Calendar className="mx-auto mb-4 text-gray-600" size={48} /><p className="text-gray-400">No workouts completed yet</p><p className="text-gray-500 text-sm">Start your first workout to see it here!</p></div>) : (workoutHistory.map((workout) => (<div key={workout.id} className="bg-gray-800 rounded-lg p-4"><div className="flex justify-between items-start mb-3"><div><h3 className="font-semibold">{workout.name}</h3><p className="text-gray-400 text-sm">{formatDate(workout.completedAt)} • {workout.duration || 0} minutes</p></div><button onClick={() => deleteWorkout(workout.id)} className="p-2 text-red-400 hover:bg-red-900/50 rounded-full transition-colors" title="Delete Workout"><Trash2 size={16} /></button></div><div className="space-y-2 border-t border-gray-700 pt-3">{workout.exercises.map((exercise) => { const completedSets = exercise.sets.filter(set => set.weight && set.reps); if (completedSets.length === 0) return null; return (<div key={exercise.id} className="text-sm"><span className="text-gray-300 font-medium">{exercise.name}: </span>{completedSets.map((set, index) => (<span key={index} className="text-gray-400">{set.weight}lbs × {set.reps}{set.rpe && ` (RPE ${set.rpe})`}{index < completedSets.length - 1 ? ' / ' : ''}</span>))}</div>); })}</div></div>)))}</div>
         </div>
@@ -544,7 +536,7 @@ const App = () => {
 
     const AnalyticsView = () => (
         <div className="min-h-screen bg-gray-900 text-white font-sans">
-          <div className="container mx-auto p-4 sm:p-6">
+          <div className="container mx-auto p-4 sm:p-6 pt-20">
             <div className="flex justify-between items-center mb-6"><h1 className="text-2xl font-bold">Analytics</h1><button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Back</button></div>
             <div className="space-y-6">{workoutHistory.length === 0 ? (<div className="text-center py-12 bg-gray-800 rounded-lg"><BarChart3 className="mx-auto mb-4 text-gray-600" size={48} /><p className="text-gray-400">No data to analyze yet</p><p className="text-gray-500 text-sm">Complete some workouts to see your progress!</p></div>) : (<>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -595,7 +587,7 @@ const App = () => {
     
         return (
           <div className="min-h-screen bg-gray-900 text-white font-sans">
-            <div className="container mx-auto p-4 sm:p-6">
+            <div className="container mx-auto p-4 sm:p-6 pt-20">
               {error && <div className="mb-4 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg flex justify-between items-center"><p className="text-red-200">{error}</p><button onClick={() => setError(null)} className="text-red-300 hover:text-red-100"><X size={20} /></button></div>}
               <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">Edit: {editingRoutine.name}</h1>
@@ -738,7 +730,7 @@ const App = () => {
 
         return (
             <div className="min-h-screen bg-gray-900 text-white font-sans">
-                <div className="container mx-auto p-4 sm:p-6 max-w-3xl">
+                <div className="container mx-auto p-4 sm:p-6 max-w-3xl pt-20">
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-2xl font-bold">Manage Routines</h1>
                         <button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Back</button>
@@ -782,7 +774,7 @@ const App = () => {
 
         return (
             <div className="min-h-screen bg-gray-900 text-white font-sans">
-                <div className="container mx-auto p-4 sm:p-6">
+                <div className="container mx-auto p-4 sm:p-6 pt-20">
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-2xl font-bold">Exercise Database</h1>
                         <button onClick={() => setCurrentView('routine')} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Back</button>
@@ -807,6 +799,79 @@ const App = () => {
         );
     };
 
+    const AuthView = ({ auth, setError }) => {
+        const [isLogin, setIsLogin] = useState(true);
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [loading, setLoading] = useState(false);
+        const [localError, setLocalError] = useState(null);
+    
+        const handleAuthAction = async (e) => {
+            e.preventDefault();
+            setLoading(true);
+            setLocalError(null);
+            try {
+                if (isLogin) {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } else {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                }
+            } catch (error) {
+                setLocalError(error.message.replace('Firebase: ', ''));
+            }
+            setLoading(false);
+        };
+    
+        const handleGoogleSignIn = async () => {
+            setLoading(true);
+            setLocalError(null);
+            try {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                setLocalError(error.message.replace('Firebase: ', ''));
+            }
+            setLoading(false);
+        };
+    
+        return (
+            <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
+                <div className="max-w-md w-full bg-gray-800 p-8 rounded-lg shadow-xl">
+                    <h1 className="text-3xl font-bold text-center mb-2">AI Workout Tracker</h1>
+                    <p className="text-center text-gray-400 mb-6">{isLogin ? "Welcome back!" : "Create your account"}</p>
+                    
+                    {localError && <p className="bg-red-500/20 text-red-300 p-3 rounded-md mb-4 text-sm">{localError}</p>}
+    
+                    <form onSubmit={handleAuthAction} className="space-y-4">
+                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="w-full bg-gray-700 p-3 rounded-lg" />
+                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" required className="w-full bg-gray-700 p-3 rounded-lg" />
+                        <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold flex items-center justify-center">
+                            {loading ? <Loader className="animate-spin" size={20} /> : (isLogin ? 'Log In' : 'Sign Up')}
+                        </button>
+                    </form>
+    
+                    <div className="flex items-center my-6">
+                        <hr className="flex-grow border-gray-600" />
+                        <span className="mx-4 text-gray-500">OR</span>
+                        <hr className="flex-grow border-gray-600" />
+                    </div>
+    
+                    <button onClick={handleGoogleSignIn} disabled={loading} className="w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg font-bold flex items-center justify-center gap-2">
+                        <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24s8.955 20 20 20s20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"></path><path fill="#FF3D00" d="M6.306 14.691l6.057 4.844C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"></path><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"></path><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C42.021 35.596 44 30.138 44 24c0-1.341-.138-2.65-.389-3.917z"></path></svg>
+                        Sign in with Google
+                    </button>
+    
+                    <p className="text-center mt-6 text-sm">
+                        {isLogin ? "Don't have an account?" : "Already have an account?"}
+                        <button onClick={() => setIsLogin(!isLogin)} className="text-blue-400 hover:underline ml-1">
+                            {isLogin ? 'Sign Up' : 'Log In'}
+                        </button>
+                    </p>
+                </div>
+            </div>
+        );
+    };
+
     if (isLoading || !isAuthReady) {
         return (
           <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center">
@@ -817,7 +882,7 @@ const App = () => {
     }
 
     if (!user) {
-        return <AuthView auth={auth} error={error} setError={setError} />;
+        return <AuthView auth={auth} setError={setError} />;
     }
     
     if (!exerciseDatabase || !userProfile || !routines) {
@@ -846,78 +911,6 @@ const App = () => {
             <Notification message={notification} />
             {currentView !== 'profileSetup' && user && <UserDisplay user={user} />}
             {views[currentView] || <MainView />}
-        </div>
-    );
-};
-
-const AuthView = ({ auth, error, setError }) => {
-    const [isLogin, setIsLogin] = useState(true);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
-
-    const handleAuthAction = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-        try {
-            if (isLogin) {
-                await signInWithEmailAndPassword(auth, email, password);
-            } else {
-                await createUserWithEmailAndPassword(auth, email, password);
-            }
-        } catch (error) {
-            setError(error.message.replace('Firebase: ', ''));
-        }
-        setLoading(false);
-    };
-
-    const handleGoogleSignIn = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const provider = new GoogleAuthProvider();
-            await signInWithPopup(auth, provider);
-        } catch (error) {
-            setError(error.message.replace('Firebase: ', ''));
-        }
-        setLoading(false);
-    };
-
-    return (
-        <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-gray-800 p-8 rounded-lg shadow-xl">
-                <h1 className="text-3xl font-bold text-center mb-2">AI Workout Tracker</h1>
-                <p className="text-center text-gray-400 mb-6">{isLogin ? "Welcome back!" : "Create your account"}</p>
-                
-                {error && <p className="bg-red-500/20 text-red-300 p-3 rounded-md mb-4 text-sm">{error}</p>}
-
-                <form onSubmit={handleAuthAction} className="space-y-4">
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="w-full bg-gray-700 p-3 rounded-lg" />
-                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" required className="w-full bg-gray-700 p-3 rounded-lg" />
-                    <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold flex items-center justify-center">
-                        {loading ? <Loader className="animate-spin" size={20} /> : (isLogin ? 'Log In' : 'Sign Up')}
-                    </button>
-                </form>
-
-                <div className="flex items-center my-6">
-                    <hr className="flex-grow border-gray-600" />
-                    <span className="mx-4 text-gray-500">OR</span>
-                    <hr className="flex-grow border-gray-600" />
-                </div>
-
-                <button onClick={handleGoogleSignIn} disabled={loading} className="w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg font-bold flex items-center justify-center gap-2">
-                    <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24s8.955 20 20 20s20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"></path><path fill="#FF3D00" d="M6.306 14.691l6.057 4.844C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"></path><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"></path><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C42.021 35.596 44 30.138 44 24c0-1.341-.138-2.65-.389-3.917z"></path></svg>
-                    Sign in with Google
-                </button>
-
-                <p className="text-center mt-6 text-sm">
-                    {isLogin ? "Don't have an account?" : "Already have an account?"}
-                    <button onClick={() => setIsLogin(!isLogin)} className="text-blue-400 hover:underline ml-1">
-                        {isLogin ? 'Sign Up' : 'Log In'}
-                    </button>
-                </p>
-            </div>
         </div>
     );
 };
