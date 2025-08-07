@@ -55,7 +55,49 @@ import ActiveWorkoutView from './components/ActiveWorkoutView';
 import RoutineEditorView from './components/RoutineEditorView';
 import MainView from './components/MainView';
 import HistoryView from './components/HistoryView';
+import AnalysisModal from './components/AnalysisModal'
 
+
+
+
+// Helper function to ensure days is always an object
+const normalizeDaysStructure = (days) => {
+  if (!days) return {};
+  
+  // If it's already an object, return as-is
+  if (!Array.isArray(days)) return days;
+  
+  // Convert array to object, skipping null/undefined entries
+  const normalized = {};
+  days.forEach((day, index) => {
+    if (day && typeof day === 'object') {
+      normalized[index] = day;
+    }
+  });
+  
+  return normalized;
+};
+
+// Helper function to ensure timestamps are numbers
+const normalizeTimestamp = (timestamp) => {
+  if (typeof timestamp === 'number') return timestamp;
+  if (typeof timestamp === 'string') {
+    const parsed = parseInt(timestamp, 10);
+    return isNaN(parsed) ? Date.now() : parsed;
+  }
+  return Date.now();
+};
+
+// Helper function to normalize workout history
+const normalizeWorkoutHistory = (history) => {
+  if (!Array.isArray(history)) return [];
+  
+  return history.map(workout => ({
+    ...workout,
+    completedAt: normalizeTimestamp(workout.completedAt),
+    id: workout.id || Date.now() + Math.random()
+  }));
+};
 
 
 // --- Static Data and Constants ---
@@ -207,28 +249,6 @@ function UserDisplay({ user, setCurrentView }) {
   );
 }
 
-function AnalysisModal({ result, onClose, isLoading }) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="text-purple-400" />AI Routine Analysis</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
-          </div>
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center h-64">
-              <Loader className="animate-spin text-purple-400" size={48} />
-              <p className="mt-4 text-gray-300">Analyzing your routine...</p>
-            </div>
-          ) : (
-            <div className="prose prose-invert prose-sm sm:prose-base max-w-none" dangerouslySetInnerHTML={{ __html: result?.replace(/\n/g, '<br />')?.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')?.replace(/\*(.*?)\*/g, '<em>$1</em>') || '' }} />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 
 // …then lower down, replace your old function with this:
@@ -607,15 +627,29 @@ function App() {
   const [skippedExercises, setSkippedExercises] = useState(new Set());
   const [editMode, setEditMode] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
-// only prompt once per session if there’s a saved workout
-const [resumeChecked, setResumeChecked] = useState(false);
+  const [resumeChecked, setResumeChecked] = useState(false);
 
+  const clearWorkoutState = useCallback(() => {
+    localStorage.removeItem('workout_state');
+    if (user?.uid) {
+      update(ref(db, `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`), {
+        inProgressWorkout: null
+      });
+    }
+  }, [user]);
 
-
-  // --- Derived State ---
+  // --- Derived State --- 
+  // MOVE activeRoutine BEFORE testDataStructure
   const activeRoutine = useMemo(() => {
     if (!routines || !activeRoutineId) return null;
-    return routines[activeRoutineId];
+    const routine = routines[activeRoutineId];
+    if (!routine) return null;
+    
+    // Normalize the days structure
+    return {
+      ...routine,
+      days: normalizeDaysStructure(routine.days)
+    };
   }, [routines, activeRoutineId]);
 
   const getVolumeStats = useMemo(() => {
@@ -632,6 +666,89 @@ const [resumeChecked, setResumeChecked] = useState(false);
     };
   }, [workoutHistory]);
 
+  // NOW define testDataStructure AFTER activeRoutine is defined
+  const testDataStructure = useCallback(() => {
+    console.log('=== TESTING DATA STRUCTURE ===');
+    
+    if (!activeRoutine) {
+      console.log('❌ No active routine');
+      alert('❌ No active routine found');
+      return false;
+    }
+    
+    if (!userProfile) {
+      console.log('❌ No user profile');
+      alert('❌ No user profile found');
+      return false;
+    }
+    
+    console.log('Active Routine:', JSON.stringify(activeRoutine, null, 2));
+    console.log('User Profile:', JSON.stringify(userProfile, null, 2));
+    
+    // Test what we would send to analyzeRoutine
+    const testPayload = {
+      routine: {
+        id: activeRoutine.id,
+        name: activeRoutine.name,
+        days: activeRoutine.days
+      },
+      profile: {
+        name: userProfile.name || '',
+        age: userProfile.age || '',
+        gender: userProfile.gender || 'Prefer not to say', 
+        weight: userProfile.weight || '',
+        goal: userProfile.goal,
+        experience: userProfile.experience,
+        daysPerWeek: userProfile.daysPerWeek || 7
+      },
+      isDay: false,
+      day: null
+    };
+    
+    console.log('Test Payload:', JSON.stringify(testPayload, null, 2));
+    
+    // Validate structure
+    const validations = [
+      { check: !!testPayload.routine, message: 'Has routine' },
+      { check: !!testPayload.routine.name, message: 'Routine has name' },
+      { check: !!testPayload.routine.days, message: 'Routine has days' },
+      { check: typeof testPayload.routine.days === 'object' && !Array.isArray(testPayload.routine.days), message: 'Days is object (not array)' },
+      { check: Object.keys(testPayload.routine.days).length > 0, message: 'Days has content' },
+      { check: !!testPayload.profile, message: 'Has profile' },
+      { check: !!testPayload.profile.goal, message: 'Profile has goal' },
+      { check: !!testPayload.profile.experience, message: 'Profile has experience' }
+    ];
+    
+    console.log('=== VALIDATION RESULTS ===');
+    validations.forEach(({ check, message }) => {
+      console.log(`${check ? '✅' : '❌'} ${message}`);
+    });
+    
+    const allValid = validations.every(v => v.check);
+    console.log(`Overall: ${allValid ? '✅ All validations passed' : '❌ Some validations failed'}`);
+    
+    // Show results in alert
+    const failedValidations = validations.filter(v => !v.check);
+    if (allValid) {
+      alert('✅ All data structure validations passed! Check console for full details.');
+    } else {
+      alert(`❌ ${failedValidations.length} validations failed:\n${failedValidations.map(v => '• ' + v.message).join('\n')}`);
+    }
+    
+    return allValid;
+  }, [activeRoutine, userProfile]); // Dependencies include activeRoutine
+
+
+
+
+
+
+
+
+
+
+
+
   // --- Effects ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -645,88 +762,115 @@ const [resumeChecked, setResumeChecked] = useState(false);
   }, []);
 
   useEffect(() => {
-    if (!isAuthReady || !user) {
-      setIsLoading(false);
-      return;
-    }
+  if (!isAuthReady || !user) {
+    setIsLoading(false);
+    return;
+  }
 
-    const appId = 'my-workout-tracker-app-d8d61';
-    const adminUserId = 'dTF8r04xSUVzpGxtnJqaxx2eQ6I3';
+  const appId = 'my-workout-tracker-app-d8d61';
+  const adminUserId = 'dTF8r04xSUVzpGxtnJqaxx2eQ6I3';
 
-    const publicRef = ref(db, `artifacts/${appId}/public/data/exercises`);
-    const unsubPublic = onValue(
-      publicRef,
-      (snap) => {
-        const data = snap.val();
-        if (data) {
-          setExerciseDatabase(data);
-        } else {
-          set(publicRef, initialExerciseDatabase);
-          setExerciseDatabase(initialExerciseDatabase);
-        }
-      },
-      (err) => {
-        console.error('Error fetching public exercises', err);
-        setError('Could not load exercise database.');
+  const publicRef = ref(db, `artifacts/${appId}/public/data/exercises`);
+  const unsubPublic = onValue(
+    publicRef,
+    (snap) => {
+      const data = snap.val();
+      if (data) {
+        setExerciseDatabase(data);
+      } else {
+        set(publicRef, initialExerciseDatabase);
         setExerciseDatabase(initialExerciseDatabase);
       }
-    );
+    },
+    (err) => {
+      console.error('Error fetching public exercises', err);
+      setError('Could not load exercise database.');
+      setExerciseDatabase(initialExerciseDatabase);
+    }
+  );
 
-    const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
-    const unsubPrivate = onValue(
-      userRef,
-      (snap) => {
-        const data = snap.val();
-        if (data && data.profile && data.profile.setupComplete) {
-          setUserProfile({ ...defaultProfile, ...data.profile });
-          if (user.uid === adminUserId && (!data.routines || !data.routines.allRoutines[adminRoutine.id])) {
-            const newRoutinesData = {
-              activeRoutineId: adminRoutine.id,
-              allRoutines: { ...(data.routines?.allRoutines || {}), [adminRoutine.id]: adminRoutine }
-            };
-            setRoutines(newRoutinesData.allRoutines);
-            setActiveRoutineId(newRoutinesData.activeRoutineId);
-            update(userRef, { routines: newRoutinesData });
-          } else if (data.routines) {
-            setRoutines(data.routines.allRoutines);
-            setActiveRoutineId(data.routines.activeRoutineId);
-          } else {
-            const newRoutinesData = {
-              activeRoutineId: blankRoutineForNewUsers.id,
-              allRoutines: { [blankRoutineForNewUsers.id]: blankRoutineForNewUsers }
-            };
-            setRoutines(newRoutinesData.allRoutines);
-            setActiveRoutineId(newRoutinesData.activeRoutineId);
-          }
-          setWorkoutHistory(data.history || []);
-          setCurrentDay(data.currentDay || 1);
-        } else {
-          setCurrentView('profileSetup');
-          setUserProfile(defaultProfile);
-          const initialRoutine = user.uid === adminUserId ? adminRoutine : blankRoutineForNewUsers;
+  const userRef = ref(db, `artifacts/${appId}/users/${user.uid}`);
+  const unsubPrivate = onValue(
+    userRef,
+    (snap) => {
+      const data = snap.val();
+      if (data && data.profile && data.profile.setupComplete) {
+        setUserProfile({ ...defaultProfile, ...data.profile });
+        if (user.uid === adminUserId && (!data.routines || !data.routines.allRoutines[adminRoutine.id])) {
           const newRoutinesData = {
-            activeRoutineId: initialRoutine.id,
-            allRoutines: { [initialRoutine.id]: initialRoutine }
+            activeRoutineId: adminRoutine.id,
+            allRoutines: { 
+              ...(data.routines?.allRoutines || {}), 
+              [adminRoutine.id]: {
+                ...adminRoutine,
+                days: normalizeDaysStructure(adminRoutine.days) // Normalize here
+              }
+            }
           };
           setRoutines(newRoutinesData.allRoutines);
           setActiveRoutineId(newRoutinesData.activeRoutineId);
-          setWorkoutHistory([]);
-          setCurrentDay(1);
+          update(userRef, { routines: newRoutinesData });
+        } else if (data.routines) {
+          // Normalize all routine days
+          const normalizedRoutines = {};
+          Object.keys(data.routines.allRoutines).forEach(key => {
+            normalizedRoutines[key] = {
+              ...data.routines.allRoutines[key],
+              days: normalizeDaysStructure(data.routines.allRoutines[key].days)
+            };
+          });
+          
+          setRoutines(normalizedRoutines);
+          setActiveRoutineId(data.routines.activeRoutineId);
+        } else {
+          const newRoutinesData = {
+            activeRoutineId: blankRoutineForNewUsers.id,
+            allRoutines: { 
+              [blankRoutineForNewUsers.id]: {
+                ...blankRoutineForNewUsers,
+                days: normalizeDaysStructure(blankRoutineForNewUsers.days)
+              }
+            }
+          };
+          setRoutines(newRoutinesData.allRoutines);
+          setActiveRoutineId(newRoutinesData.activeRoutineId);
         }
-        setIsLoading(false);
-      },
-      (err) => {
-        console.error('Error fetching user data', err);
-        setError('Could not load your data.');
-        setIsLoading(false);
+        
+        // Normalize workout history timestamps
+        setWorkoutHistory(normalizeWorkoutHistory(data.history || []));
+        setCurrentDay(data.currentDay || 1);
+      } else {
+        setCurrentView('profileSetup');
+        setUserProfile(defaultProfile);
+        const initialRoutine = user.uid === adminUserId ? adminRoutine : blankRoutineForNewUsers;
+        const newRoutinesData = {
+          activeRoutineId: initialRoutine.id,
+          allRoutines: { 
+            [initialRoutine.id]: {
+              ...initialRoutine,
+              days: normalizeDaysStructure(initialRoutine.days)
+            }
+          }
+        };
+        setRoutines(newRoutinesData.allRoutines);
+        setActiveRoutineId(newRoutinesData.activeRoutineId);
+        setWorkoutHistory([]);
+        setCurrentDay(1);
       }
-    );
+      setIsLoading(false);
+    },
+    (err) => {
+      console.error('Error fetching user data', err);
+      setError('Could not load your data.');
+      setIsLoading(false);
+    }
+  );
 
-    return () => {
-      unsubPublic();
-      unsubPrivate();
-    };
-  }, [isAuthReady, user]);
+  return () => {
+    unsubPublic();
+    unsubPrivate();
+  };
+}, [isAuthReady, user]);
 
 
 
@@ -743,10 +887,24 @@ useEffect(() => {
     if (saved) {
       try {
         const p = JSON.parse(saved);
-        if (p.workoutData && p.exerciseOrder) {
+        
+        // Better validation - check if there's actual meaningful workout data
+        const hasValidWorkout = (
+          p.workoutData && 
+          p.workoutData.exercises && 
+          p.workoutData.exercises.length > 0 &&
+          p.exerciseOrder && 
+          p.exerciseOrder.length > 0 &&
+          p.workoutStartTime &&
+          // Check if the workout was started recently (within last 24 hours)
+          (Date.now() - p.workoutStartTime) < (24 * 60 * 60 * 1000)
+        );
+
+        if (hasValidWorkout) {
+          const startTime = new Date(p.workoutStartTime).toLocaleString();
           if (
             window.confirm(
-              'You have an in-progress workout. Resume?'
+              `You have an in-progress workout from ${startTime}. Resume?`
             )
           ) {
             setWorkoutData(p.workoutData);
@@ -757,24 +915,23 @@ useEffect(() => {
             setWorkoutStartTime(p.workoutStartTime || Date.now());
             setCurrentView('workout');
           } else {
-            localStorage.removeItem('workout_state');
-            if (user.uid) {
-              update(
-                ref(
-                  db,
-                  `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`
-                ),
-                { inProgressWorkout: null }
-              );
-            }
+            // User declined - clear the stale data
+            clearWorkoutState();
           }
+        } else {
+          // Invalid or stale workout data - clear it silently
+          console.log('Clearing stale/invalid workout data');
+          clearWorkoutState();
         }
       } catch (err) {
         console.error('Error parsing workout_state', err);
+        // Clear corrupted data
+        clearWorkoutState();
       }
     }
   }
-}, [resumeChecked, isAuthReady, user, currentView]);
+
+}, [resumeChecked, isAuthReady, user, currentView, clearWorkoutState]); 
 
 
 
@@ -814,7 +971,68 @@ useEffect(() => {
 
 
 
+// ADD THIS FUNCTION in your App.js after your other useCallback functions (around line 900)
 
+const testFirebaseFunction = useCallback(async () => {
+  console.log('Testing Firebase Functions...');
+  
+  try {
+    // Test the basic test function first
+    console.log('Testing basic function...');
+    const testFn = httpsCallable(functions, 'testFunction');
+    const result = await testFn({ test: 'data from app', timestamp: Date.now() });
+    
+    console.log('✅ Test result:', result.data);
+    
+    // Show results
+    alert(`✅ Functions working!
+API Key Available: ${result.data.hasApiKey ? 'YES' : 'NO'}
+Message: ${result.data.message}
+Time: ${result.data.timestamp}`);
+    
+    // If basic test works, try the analyzeRoutine function
+    if (result.data.hasApiKey) {
+      console.log('API key found, testing analyzeRoutine...');
+      
+      const analyzeFn = httpsCallable(functions, 'analyzeRoutine');
+      const analyzeResult = await analyzeFn({
+        routine: {
+          name: 'Test Routine',
+          days: {
+            1: {
+              name: 'Test Day',
+              exercises: [
+                { name: 'Push-ups', sets: 3, targetReps: '10-15', restTime: 60 },
+                { name: 'Squats', sets: 3, targetReps: '12-15', restTime: 90 }
+              ]
+            }
+          }
+        },
+        profile: {
+          goal: 'General Fitness',
+          experience: 'Beginner',
+          daysPerWeek: 3
+        },
+        isDay: false,
+        day: null
+      });
+      
+      console.log('✅ Analyze result:', analyzeResult.data);
+      alert('✅ AI Analysis also working!');
+      
+    } else {
+      console.log('❌ No API key found');
+      alert('❌ Functions work but no API key found. Check your .env file.');
+    }
+    
+  } catch (error) {
+    console.error('❌ Test failed:', error);
+    alert(`❌ Test failed: 
+Code: ${error.code}
+Message: ${error.message}
+Details: ${error.details || 'None'}`);
+  }
+}, []);
 
 
   // --- Utility Functions ---
@@ -866,25 +1084,52 @@ useEffect(() => {
     setCurrentView('workout');
   }, [activeRoutine]);
 
-  const cancelWorkout = useCallback(() => {
-    setWorkoutData({});
-    setCurrentView('routine');
-  }, []);
 
-  const finishWorkout = useCallback(() => {
-    const duration = Math.round((Date.now() - workoutStartTime) / 60000);
-    const newWorkout = { ...workoutData, id: Date.now(), completedAt: Date.now(), duration };
-    const updatedHistory = [...workoutHistory, newWorkout];
-    setWorkoutHistory(updatedHistory);
-    if (user?.uid) {
-      update(ref(db, `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`), {
-        history: updatedHistory
-      });
-    }
-    setWorkoutData({});
-    setCurrentView('routine');
-    showNotification('Workout saved!');
-  }, [workoutData, workoutHistory, workoutStartTime, user, showNotification]);
+
+const finishWorkout = useCallback(() => {
+  const duration = Math.round((Date.now() - workoutStartTime) / 60000);
+  const newWorkout = { 
+    ...workoutData, 
+    id: Date.now(), 
+    completedAt: Date.now(), // Ensure this is a number
+    duration 
+  };
+  const updatedHistory = [...workoutHistory, newWorkout];
+  setWorkoutHistory(updatedHistory);
+  if (user?.uid) {
+    update(ref(db, `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`), {
+      history: updatedHistory
+    });
+  }
+  
+// Clear workout state completely
+  clearWorkoutState();
+  setWorkoutData({});
+  setExerciseOrder([]);
+  setCompletedExercises(new Set());
+  setSkippedExercises(new Set());
+  setEditMode(false);
+  setWorkoutStartTime(null);
+  
+  setCurrentView('routine');
+  showNotification('Workout saved!');
+}, [workoutData, workoutHistory, workoutStartTime, user, showNotification, clearWorkoutState]);
+
+
+// NEW cancelWorkout - REPLACE WITH THIS:
+const cancelWorkout = useCallback(() => {
+  // Clear workout state completely
+  clearWorkoutState();
+  setWorkoutData({});
+  setExerciseOrder([]);
+  setCompletedExercises(new Set());
+  setSkippedExercises(new Set());
+  setEditMode(false);
+  setWorkoutStartTime(null);
+  
+  setCurrentView('routine');
+  showNotification('Workout paused and saved');
+}, [clearWorkoutState, showNotification]);
 
   const unskipExercise = useCallback((index) => {
     setSkippedExercises(prev => {
@@ -967,40 +1212,170 @@ useEffect(() => {
   setIsGenerating(prev => ({ ...prev, [exerciseName]: false }));
 }, [saveExerciseToPublicDB]);
 
+
+// Add a button temporarily: <button onClick={testFunction}>Test Functions</button>
 // App.js
 const analyzeRoutine = useCallback(async (routine, profile, isDay = false, day = null) => {
-  console.log('[App] analyzeRoutine called with Firebase Functions:', { routine, profile, isDay, day });
+  console.log('=== ENHANCED DEBUG: analyzeRoutine called ===');
+  console.log('Routine object:', JSON.stringify(routine, null, 2));
+  console.log('Profile object:', JSON.stringify(profile, null, 2));
+  console.log('isDay:', isDay);
+  console.log('day:', day);
+  
+  // Detailed validation logging
+  console.log('Routine validation:');
+  console.log('- Has routine object:', !!routine);
+  console.log('- Routine has name:', !!routine?.name);
+  console.log('- Routine name value:', routine?.name);
+  console.log('- Routine has days:', !!routine?.days);
+  console.log('- Days type:', typeof routine?.days);
+  console.log('- Days keys:', routine?.days ? Object.keys(routine.days) : 'none');
+  console.log('- Days values sample:', routine?.days ? Object.values(routine.days)[0] : 'none');
+
   setIsAnalyzing(true);
   setAnalysisResult(null);
 
   try {
-    // Call your deployed Firebase Function
-    const analyzeRoutineFn = httpsCallable(functions, 'analyzeRoutine');
-    console.log('[App] Calling Firebase Function...');
+    // Enhanced validation
+    if (!routine) {
+      throw new Error('No routine provided');
+    }
     
-    const response = await analyzeRoutineFn({
-      routine,
-      profile,
+    if (!routine.name) {
+      throw new Error('Routine missing name property');
+    }
+    
+    if (!routine.days) {
+      throw new Error('Routine missing days property');
+    }
+    
+    if (typeof routine.days !== 'object' || Array.isArray(routine.days)) {
+      throw new Error(`Days must be an object, got ${typeof routine.days} (isArray: ${Array.isArray(routine.days)})`);
+    }
+    
+    const dayKeys = Object.keys(routine.days);
+    if (dayKeys.length === 0) {
+      throw new Error('Routine days object is empty');
+    }
+    
+    console.log('✅ Frontend validation passed');
+    
+    if (!day && !profile) {
+      throw new Error('Either day data or complete profile is required');
+    }
+    
+    if (!profile || !profile.goal || !profile.experience) {
+      throw new Error('Complete user profile with goal and experience is required');
+    }
+
+    if (!functions) {
+      throw new Error('Firebase Functions not initialized');
+    }
+
+    // Create the exact payload we're sending
+    const payload = {
+      routine: {
+        id: routine.id,
+        name: routine.name,
+        days: routine.days
+      },
+      profile: {
+        name: profile.name || '',
+        age: profile.age || '',
+        gender: profile.gender || 'Prefer not to say',
+        weight: profile.weight || '',
+        goal: profile.goal,
+        experience: profile.experience,
+        daysPerWeek: profile.daysPerWeek || 7
+      },
       isDay,
       day
-    });
+    };
 
-    console.log('[App] Firebase Function response:', response);
-    const resultHtml = response.data?.analysis || 'Analysis completed but no data received.';
-    console.log('[App] Setting analysis result:', resultHtml);
+    console.log('=== FINAL PAYLOAD TO FIREBASE ===');
+    console.log(JSON.stringify(payload, null, 2));
+    
+    const analyzeRoutineFn = httpsCallable(functions, 'analyzeRoutine');
+    
+    console.log('[App] Calling Firebase Function with payload...');
+    const response = await analyzeRoutineFn(payload);
+
+    console.log('[App] Firebase Function response received:', response);
+    
+    if (!response || !response.data) {
+      throw new Error('Empty response from analysis function');
+    }
+    
+    const resultHtml = response.data.analysis || response.data.result || response.data.message || 'Analysis completed but no content received.';
     setAnalysisResult(resultHtml);
     
   } catch (error) {
-    console.error('[App] Analysis error:', error);
+    console.error('[App] Analysis error full details:', error);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    console.error('Error details:', error.details);
+    console.error('Full error object:', JSON.stringify(error, null, 2));
+    
+    let errorMessage = 'Unknown error occurred';
+    let errorCode = error.code || 'UNKNOWN';
+    
+    // Handle client-side validation errors
+    if (!error.code) {
+      errorMessage = error.message;
+      errorCode = 'CLIENT_VALIDATION';
+    } else {
+      switch (error.code) {
+        case 'functions/not-found':
+          errorMessage = 'Analysis function not deployed. Please contact support.';
+          break;
+        case 'functions/deadline-exceeded':
+          errorMessage = 'Analysis timed out. Try with a smaller routine.';
+          break;
+        case 'functions/permission-denied':
+          errorMessage = 'Permission denied. Please check your login status.';
+          break;
+        case 'functions/unavailable':
+          errorMessage = 'Analysis service temporarily unavailable.';
+          break;
+        case 'functions/internal':
+          errorMessage = 'Internal server error. The analysis function encountered an issue.';
+          break;
+        case 'functions/invalid-argument':
+          errorMessage = `Invalid data: ${error.message}`;
+          break;
+        default:
+          errorMessage = error.message || 'Failed to analyze routine';
+      }
+    }
+    
     setAnalysisResult(`
-      <strong>Analysis Error</strong><br/>
-      Unable to analyze routine: ${error.message}<br/>
-      Please check your internet connection and try again.
+      <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgb(239, 68, 68); border-radius: 8px; padding: 16px; margin: 8px 0;">
+        <strong style="color: rgb(248, 113, 113);">Analysis Error</strong><br/>
+        <p style="color: rgb(252, 165, 165); margin-top: 8px;">Unable to analyze routine: ${errorMessage}</p>
+        <p style="color: rgb(156, 163, 175); font-size: 0.875rem; margin-top: 8px;">Error Code: ${errorCode}</p>
+        <details style="margin-top: 12px; color: rgb(156, 163, 175); font-size: 0.75rem;">
+          <summary style="cursor: pointer; color: rgb(253, 224, 71);">Technical Details</summary>
+          <pre style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow-x: auto;">
+Full Error: ${JSON.stringify(error, null, 2)}
+          </pre>
+        </details>
+        ${error.code === 'functions/not-found' ? 
+          '<p style="color: rgb(253, 224, 71); font-size: 0.875rem; margin-top: 8px;">💡 Make sure your Firebase Cloud Functions are deployed and accessible.</p>' : 
+          '<p style="color: rgb(156, 163, 175); font-size: 0.875rem; margin-top: 8px;">Check the console for detailed error information.</p>'
+        }
+      </div>
     `);
   }
 
   setIsAnalyzing(false);
 }, []);
+
+
+
+
+
+
+
 
 
 
@@ -1047,6 +1422,8 @@ const analyzeRoutine = useCallback(async (routine, profile, isDay = false, day =
         setShowExerciseInfo={setShowExerciseInfo}
         error={error}
         setError={setError}
+        testFirebaseFunction={testFirebaseFunction} 
+        testDataStructure={testDataStructure} // Make sure this is here
       />
     ),
     editRoutine: (

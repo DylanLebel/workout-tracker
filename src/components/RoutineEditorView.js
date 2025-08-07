@@ -1,4 +1,4 @@
-// src/components/RoutineEditorView.js
+﻿// src/components/RoutineEditorView.js
 import React, { useState } from 'react'
 import { Loader, X, Plus, Trash2, Sparkles, Save, Brain } from 'lucide-react'
 import AnalysisModal from './AnalysisModal'
@@ -34,6 +34,37 @@ export default function RoutineEditorView({
     updateRoutines(all)
     setCurrentView('routine')
     showNotification('Routine saved!')
+  }
+
+  // FIXED: Function to analyze the full routine
+  const handleAnalyzeRoutine = () => {
+    console.log('🔍 Analyzing full routine...')
+    console.log('editingRoutine:', editingRoutine)
+    console.log('userProfile:', userProfile)
+    
+    // Call with proper parameter structure
+    analyzeRoutine(
+      editingRoutine,  // routine object
+      userProfile,     // profile object  
+      false,          // isDay = false for full routine
+      null            // day = null for full routine
+    )
+  }
+
+  // FIXED: Function to analyze a single day
+  const handleAnalyzeDay = () => {
+    const dayData = editingRoutine.days[selectedDay]
+    console.log('🔍 Analyzing single day...')
+    console.log('dayData:', dayData)
+    console.log('userProfile:', userProfile)
+    
+    // Call with proper parameter structure
+    analyzeRoutine(
+      null,           // routine = null for day analysis
+      userProfile,    // profile object
+      true,          // isDay = true for day analysis
+      dayData        // day object
+    )
   }
 
   const addExerciseToDay = (name) => {
@@ -148,7 +179,7 @@ export default function RoutineEditorView({
           <h1 className="text-2xl font-bold">Edit: {editingRoutine.name}</h1>
           <div className="flex gap-2">
             <button
-              onClick={() => analyzeRoutine(editingRoutine, userProfile)}
+              onClick={handleAnalyzeRoutine}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg flex items-center gap-2"
               disabled={isAnalyzing}
             >
@@ -202,9 +233,7 @@ export default function RoutineEditorView({
           <div className="flex justify-between items-center mb-2">
             <label className="text-lg font-semibold">Day {selectedDay} Name</label>
             <button
-              onClick={() =>
-                analyzeRoutine(null, userProfile, true, editingRoutine.days[selectedDay])
-              }
+              onClick={handleAnalyzeDay}
               className="px-3 py-1 bg-purple-600/70 hover:bg-purple-700 rounded-lg text-sm flex items-center gap-2"
               disabled={isAnalyzing}
             >
@@ -306,7 +335,57 @@ export default function RoutineEditorView({
         {showExerciseDB && (
           <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
             <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-gray-700">
-              {/* ... same as before for search/add UI ... */}
+              <div className="p-6 border-b border-gray-700">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Add Exercise</h2>
+                  <button
+                    onClick={() => setShowExerciseDB(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search exercises..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="flex-1 bg-gray-700 rounded p-2"
+                  />
+                  <button
+                    onClick={() => setShowAddExercise(true)}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded flex items-center gap-2"
+                  >
+                    <Plus size={16} /> New
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="space-y-2">
+                  {filteredExercises.map((name) => (
+                    <div
+                      key={name}
+                      className="flex justify-between items-center p-3 bg-gray-700 rounded hover:bg-gray-600"
+                    >
+                      <div>
+                        <h4 className="font-medium">{name}</h4>
+                        <p className="text-sm text-gray-400">
+                          {typeof exerciseDatabase[name]?.muscle === 'string'
+                            ? exerciseDatabase[name].muscle
+                            : 'Muscle not specified'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => addExerciseToDay(name)}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -314,7 +393,30 @@ export default function RoutineEditorView({
         {/* Add-New-Exercise Modal */}
         {showAddExercise && (
           <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-[60]">
-            {/* ... same as before for adding new exercise ... */}
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-bold mb-4">Add New Exercise</h3>
+              <input
+                type="text"
+                placeholder="Exercise name..."
+                value={newExerciseName}
+                onChange={(e) => setNewExerciseName(e.target.value)}
+                className="w-full bg-gray-700 rounded p-3 mb-4"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={addNewExerciseToDatabase}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded"
+                >
+                  Add & Generate Info
+                </button>
+                <button
+                  onClick={() => setShowAddExercise(false)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

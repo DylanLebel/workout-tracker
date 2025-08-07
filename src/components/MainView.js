@@ -61,7 +61,9 @@ export default function MainView({
   startWorkout,
   setShowExerciseInfo,
   error,
-  setError
+  setError,
+  testFirebaseFunction,
+  testDataStructure // ADD THIS PROP
 }) {
   if (!activeRoutine) return null
 
@@ -84,7 +86,24 @@ export default function MainView({
               Next: Day {currentDay} • {activeRoutine.days[currentDay]?.name}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            {/* Debug buttons */}
+            <button
+              onClick={testDataStructure}
+              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-sm"
+              title="Test Data Structure"
+            >
+              🔍 Test Data
+            </button>
+            <button
+              onClick={testFirebaseFunction}
+              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded text-sm"
+              title="Test Firebase Functions"
+            >
+              🧪 Test AI
+            </button>
+            
+            {/* Regular app buttons */}
             <button
               onClick={() => setCurrentView('exerciseDatabase')}
               className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg"
@@ -263,5 +282,7 @@ MainView.propTypes = {
   startWorkout: PropTypes.func.isRequired,
   setShowExerciseInfo: PropTypes.func.isRequired,
   error: PropTypes.string,
-  setError: PropTypes.func.isRequired
+  setError: PropTypes.func.isRequired,
+  testFirebaseFunction: PropTypes.func,
+  testDataStructure: PropTypes.func // ADD THIS PROP TYPE
 }
