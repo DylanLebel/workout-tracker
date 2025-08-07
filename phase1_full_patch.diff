@@ -1,0 +1,237 @@
+--- a/App.js
++++ b/App.js
+@@ function App() {
+   const [lastSaved, setLastSaved] = useState(null);
++  // Tracks whether we've checked for a saved workout this session
++  const [resumeChecked, setResumeChecked] = useState(false);
+@@
+   useEffect(() => {
+@@
+   }, [isAuthReady, user]);
++
++  // On mount, check if there is an in-progress workout saved in localStorage
++  useEffect(() => {
++    if (!resumeChecked && isAuthReady && user && !workoutData?.exercises?.length && currentView !== 'workout') {
++      setResumeChecked(true);
++      try {
++        const saved = localStorage.getItem('workout_state');
++        if (saved) {
++          const parsed = JSON.parse(saved);
++          if (parsed && parsed.workoutData && parsed.exerciseOrder) {
++            if (window.confirm('You have an in-progress workout. Resume?')) {
++              setWorkoutData(parsed.workoutData);
++              setExerciseOrder(parsed.exerciseOrder);
++              setSkippedExercises(new Set(parsed.skippedExercises || []));
++              setCompletedExercises(new Set(parsed.completedExercises || []));
++              setEditMode(parsed.editMode || false);
++              setWorkoutStartTime(parsed.workoutStartTime || Date.now());
++              setCurrentView('workout');
++            } else {
++              localStorage.removeItem('workout_state');
++              if (user?.uid) {
++                update(ref(db, `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`), {
++                  inProgressWorkout: null
++                });
++              }
++            }
++          }
++        }
++      } catch (e) {
++        console.error('Error parsing saved workout state', e);
++      }
++    }
++  }, [resumeChecked, isAuthReady, user, currentView, workoutData]);
++
++  // Persist in-progress workout state to localStorage every few seconds
++  useEffect(() => {
++    if (currentView === 'workout' && workoutData && workoutData.exercises && workoutData.exercises.length) {
++      const interval = setInterval(() => {
++        const stateToSave = {
++          workoutData,
++          exerciseOrder,
++          skippedExercises: Array.from(skippedExercises),
++          completedExercises: Array.from(completedExercises),
++          editMode,
++          workoutStartTime
++        };
++        try {
++          localStorage.setItem('workout_state', JSON.stringify(stateToSave));
++          setLastSaved(new Date().toLocaleTimeString());
++        } catch (e) {
++          console.error('Error saving workout state', e);
++        }
++      }, 5000);
++      return () => clearInterval(interval);
++    }
++  }, [currentView, workoutData, exerciseOrder, skippedExercises, completedExercises, editMode, workoutStartTime]);
+@@ const unsubPrivate = onValue(
+-          } else if (data.routines) {
+-            setRoutines(data.routines.allRoutines);
+-            setActiveRoutineId(data.routines.activeRoutineId);
+-          } else {
++          } else if (data.routines && data.routines.allRoutines && Object.keys(data.routines.allRoutines).length > 0) {
++            setRoutines(data.routines.allRoutines);
++            setActiveRoutineId(data.routines.activeRoutineId);
++          } else {
+@@
+           }
+@@
+         setIsLoading(false);
+@@
+       unsubPrivate();
+     };
+   }, [isAuthReady, user]);
+@@ const cancelWorkout = useCallback(() => {
+-    setWorkoutData({});
+-    setCurrentView('routine');
+-  }, []);
++    // Save in-progress workout to Firebase so the user can resume later
++    if (user?.uid && workoutData && workoutData.exercises && workoutData.exercises.length) {
++      const stateToSave = {
++        workoutData,
++        exerciseOrder,
++        skippedExercises: Array.from(skippedExercises),
++        completedExercises: Array.from(completedExercises),
++        editMode,
++        workoutStartTime
++      };
++      update(ref(db, `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`), {
++        inProgressWorkout: stateToSave
++      });
++    }
++    setWorkoutData({});
++    setCurrentView('routine');
++  }, [user, workoutData, exerciseOrder, skippedExercises, completedExercises, editMode, workoutStartTime]);
+@@ const finishWorkout = useCallback(() => {
+     setWorkoutData({});
+     setCurrentView('routine');
+-    showNotification('Workout saved!');
+-  }, [workoutData, workoutHistory, workoutStartTime, user, showNotification]);
++    // Clear persisted state after finishing the workout
++    try {
++      localStorage.removeItem('workout_state');
++    } catch (e) {
++      console.error('Error removing workout state', e);
++    }
++    if (user?.uid) {
++      update(ref(db, `artifacts/my-workout-tracker-app-d8d61/users/${user.uid}`), {
++        inProgressWorkout: null,
++        history: updatedHistory
++      });
++    }
++    showNotification('Workout saved!');
++  }, [workoutData, workoutHistory, workoutStartTime, user, showNotification, exerciseOrder, skippedExercises, completedExercises, editMode]);
+--- a/App.js
++++ b/App.js
+@@ function RoutineEditorView({ activeRoutine, routines, activeRoutineId, updateRoutines, setCurrentView, showNotification, exerciseDatabase, saveExerciseToPublicDB, generateExerciseInfo, isGenerating, analyzeRoutine, userProfile, isAnalyzing, analysisResult, setAnalysisResult, error, setError }) {
+   const [editingRoutine, setEditingRoutine] = useState(JSON.parse(JSON.stringify(activeRoutine)));
+   const [selectedDay, setSelectedDay] = useState(1);
+   const [showExerciseDB, setShowExerciseDB] = useState(false);
+   const [showAddExercise, setShowAddExercise] = useState(false);
+   const [newExerciseName, setNewExerciseName] = useState('');
+   const [searchTerm, setSearchTerm] = useState('');
++
++  // Move an exercise up or down within the current day's list
++  const moveExerciseInDay = (index, direction) => {
++    setEditingRoutine((prev) => {
++      const day = prev.days[selectedDay];
++      const exercises = [...day.exercises];
++      const [item] = exercises.splice(index, 1);
++      exercises.splice(index + direction, 0, item);
++      return {
++        ...prev,
++        days: {
++          ...prev.days,
++          [selectedDay]: {
++            ...day,
++            exercises
++          }
++        }
++      };
++    });
++  };
+@@
+-            {editingRoutine.days[selectedDay]?.exercises.map((ex) => {
++            {editingRoutine.days[selectedDay]?.exercises.map((ex, idx) => {
+@@
+-                <button onClick={() => removeExerciseFromDay(ex.id)} className="ml-3 p-2 text-red-400 hover:bg-red-900/50 rounded-full">
+-                    <Trash2 size={16} />
+-                </button>
++                <div className="flex items-center gap-1">
++                    {idx > 0 && (
++                      <button onClick={() => moveExerciseInDay(idx, -1)} className="p-1 text-gray-400 hover:bg-gray-600 rounded-full">
++                        <ChevronUp size={14} />
++                      </button>
++                    )}
++                    {idx < editingRoutine.days[selectedDay].exercises.length - 1 && (
++                      <button onClick={() => moveExerciseInDay(idx, 1)} className="p-1 text-gray-400 hover:bg-gray-600 rounded-full">
++                        <ChevronDown size={14} />
++                      </button>
++                    )}
++                    <button onClick={() => removeExerciseFromDay(ex.id)} className="p-2 text-red-400 hover:bg-red-900/50 rounded-full">
++                        <Trash2 size={16} />
++                    </button>
++                </div>
+--- a/App.js
++++ b/App.js
+@@ function ExerciseDatabaseView({ exerciseDatabase, setCurrentView, setShowExerciseInfo }) {
+-function ExerciseDatabaseView({ exerciseDatabase, setCurrentView, setShowExerciseInfo }) {
++function ExerciseDatabaseView({ exerciseDatabase, setCurrentView, setShowExerciseInfo, activeRoutine, activeRoutineId, routines, updateRoutines }) {
+@@
+-        <div className="space-y-3">{filtered.map(([name, data]) => (<div key={name} className="bg-gray-800 p-4 rounded-lg flex justify-between items-center"><div><h3 className="font-semibold text-lg">{name}</h3><p className="text-sm text-gray-400">{typeof data.muscle === 'object' ? Object.values(data.muscle).filter(Boolean).join(', ') : data.muscle}</p></div><button onClick={() => setShowExerciseInfo({ name, ...data })} className="p-2 hover:bg-gray-700 rounded-full"><Info size={18} /></button></div>))}</div>
++        <div className="space-y-3">{filtered.map(([name, data]) => (
++          <div key={name} className="bg-gray-800 p-4 rounded-lg flex justify-between items-center">
++            <div>
++              <h3 className="font-semibold text-lg">{name}</h3>
++              <p className="text-sm text-gray-400">{typeof data.muscle === 'object' ? Object.values(data.muscle).filter(Boolean).join(', ') : data.muscle}</p>
++            </div>
++            <div className="flex items-center gap-2">
++              <button onClick={() => setShowExerciseInfo({ name, ...data })} className="p-2 hover:bg-gray-700 rounded-full" title="Info"><Info size={18} /></button>
++              {activeRoutine && routines && (
++                <button
++                  onClick={() => {
++                    const dayInput = prompt('Add to which day? (enter day number)');
++                    const dayNum = parseInt(dayInput, 10);
++                    if (!dayNum || !activeRoutine.days[dayNum]) {
++                      alert('Invalid day number');
++                      return;
++                    }
++                    const newExercise = { id: Date.now(), name, sets: 3, targetReps: '8-12', restTime: 90 };
++                    const updatedDay = {
++                      ...activeRoutine.days[dayNum],
++                      exercises: [...activeRoutine.days[dayNum].exercises, newExercise]
++                    };
++                    const updatedRoutine = {
++                      ...activeRoutine,
++                      days: { ...activeRoutine.days, [dayNum]: updatedDay }
++                    };
++                    const updatedRoutines = { ...routines, [activeRoutineId]: updatedRoutine };
++                    updateRoutines(updatedRoutines, activeRoutineId);
++                  }}
++                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
++                >
++                  Add
++                </button>
++              )}
++            </div>
++          </div>
++        ))}</div>
+@@
+ }
+--- a/App.js
++++ b/App.js
+@@ const views = {
+-    exerciseDatabase: <ExerciseDatabaseView 
+-      exerciseDatabase={exerciseDatabase} 
+-      setCurrentView={setCurrentView} 
+-      setShowExerciseInfo={setShowExerciseInfo} 
+-    />
++    exerciseDatabase: <ExerciseDatabaseView 
++      exerciseDatabase={exerciseDatabase} 
++      setCurrentView={setCurrentView} 
++      setShowExerciseInfo={setShowExerciseInfo} 
++      activeRoutine={activeRoutine}
++      activeRoutineId={activeRoutineId}
++      routines={routines}
++      updateRoutines={updateRoutines}
++    />
